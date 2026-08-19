@@ -123,7 +123,9 @@ Contributions, issues, and feature requests are welcome! Feel free to check out 
 
 ## 🛠️ Built With
 
-* **Swift / SwiftUI**
-* **Core Audio & I/O Kit APIs**
+* **Swift / SwiftUI / AppKit**
+* **IOKit Power & SmartBattery APIs**
+* **Spotify Web API & Todoist REST API**
 * Prototyped and built with assistance from AI-assisted development tools (Cursor / Claude).
+
 
