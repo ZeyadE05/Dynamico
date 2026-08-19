@@ -1,0 +1,22 @@
+# macOS & System
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Swift Package Manager & Xcode Build Directories
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+*.xcuserdata
+*.xcscmblueprint
+*.xccheckout
+
+# Executable App Bundles
+Dynamico.app
+*.app
+
+# Logs
+*.log
