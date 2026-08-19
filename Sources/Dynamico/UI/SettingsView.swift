@@ -264,9 +264,25 @@ public struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Redirect URI")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.45))
+                    HStack {
+                        Text("Redirect URI")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color.white.opacity(0.45))
+                        Spacer()
+                        Button(action: {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(authManager.redirectURI, forType: .string)
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy URI")
+                            }
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
+                        }
+                        .buttonStyle(.plain)
+                        .help("Copy redirect URI to paste into Spotify Developer Dashboard settings")
+                    }
 
                     TextField("notchnook://callback", text: $authManager.redirectURI)
                         .textFieldStyle(.plain)

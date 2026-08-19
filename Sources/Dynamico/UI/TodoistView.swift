@@ -92,37 +92,82 @@ public struct TodoistView: View {
     }
 
     private var unauthenticatedState: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 8) {
             Spacer()
             Image(systemName: "checkmark.circle.badge.questionmark")
                 .font(.system(size: 22))
-                .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.7))
+                .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.85))
 
-            Text("Todoist Not Connected")
+            Text("Connect Todoist")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundColor(Color.white.opacity(0.85))
+                .foregroundColor(Color.white.opacity(0.9))
 
-            Text("Enter your API Token in Dynamico Settings to view and manage tasks.")
-                .font(.system(size: 9))
-                .multilineTextAlignment(.center)
-                .foregroundColor(Color.white.opacity(0.45))
-                .padding(.horizontal, 20)
-
-            Button(action: {
-                SettingsWindowManager.shared.showSettingsWindow()
-            }) {
-                HStack(spacing: 4) {
-                    Image(systemName: "gearshape.fill")
-                    Text("Open Settings")
+            HStack(spacing: 6) {
+                Button(action: {
+                    if let url = URL(string: "https://todoist.com/app/settings/integrations") {
+                        NSWorkspace.shared.open(url)
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "key.fill")
+                        Text("Get My API Token")
+                        Image(systemName: "arrow.up.right")
+                    }
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.15))
+                    .cornerRadius(6)
                 }
-                .font(.system(size: 10, weight: .semibold))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color.white.opacity(0.1))
-                .foregroundColor(.white)
-                .cornerRadius(6)
+                .buttonStyle(.plain)
+                .help("Opens Todoist settings page where your API token is located at the bottom")
             }
-            .buttonStyle(.plain)
+
+            HStack(spacing: 6) {
+                SecureField("Paste API Token here...", text: $newTaskTitle)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.08))
+                    .cornerRadius(6)
+                    .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                    .frame(maxWidth: 240)
+
+                Button(action: {
+                    let token = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !token.isEmpty else { return }
+                    Task {
+                        let success = await todoist.saveToken(token)
+                        if success {
+                            newTaskTitle = ""
+                        }
+                    }
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "link")
+                        Text("Connect")
+                    }
+                    .font(.system(size: 10, weight: .bold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color(red: 228/255, green: 71/255, blue: 62/255))
+                    .foregroundColor(.white)
+                    .cornerRadius(6)
+                }
+                .buttonStyle(.plain)
+                .disabled(newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(.top, 2)
+
+            if let error = todoist.errorMessage {
+                Text(error)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundColor(.orange)
+                    .multilineTextAlignment(.center)
+            }
 
             Spacer()
         }

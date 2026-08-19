@@ -188,7 +188,7 @@ public struct SpotifyPlayerView: View {
                 Button(action: {
                     openSpotifyApp()
                 }) {
-                    Text("Open Spotify")
+                    Text("Open Local App")
                         .font(.system(size: 10, weight: .semibold))
                         .padding(.horizontal, 10)
                         .padding(.vertical, 4)
@@ -198,7 +198,7 @@ public struct SpotifyPlayerView: View {
                 }
                 .buttonStyle(.plain)
             }
-            .frame(width: 120)
+            .frame(width: 110)
 
             Rectangle()
                 .fill(Color.white.opacity(0.06))
@@ -206,42 +206,79 @@ public struct SpotifyPlayerView: View {
 
             // Right Info & Connect
             VStack(alignment: .leading, spacing: 6) {
-                Text("Spotify Integration")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.9))
+                HStack {
+                    Text("Connect Spotify Web API")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.9))
 
-                if let error = authManager.authError {
-                    Text(error)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.orange)
-                        .lineLimit(1)
-                } else {
-                    Text("Connect Spotify Web API or launch local Spotify desktop app")
-                        .font(.system(size: 10))
-                        .foregroundColor(Color.white.opacity(0.45))
-                        .lineLimit(2)
-                }
+                    Spacer()
 
-                HStack(spacing: 10) {
                     Button(action: {
-                        Task {
-                            try? await authManager.startPKCEAuth()
+                        if let url = URL(string: "https://developer.spotify.com/dashboard") {
+                            NSWorkspace.shared.open(url)
                         }
                     }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "link")
-                            Text("Connect Account")
+                        HStack(spacing: 3) {
+                            Text("Dev Dashboard")
+                            Image(systemName: "arrow.up.right")
                         }
-                        .font(.system(size: 10, weight: .semibold))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(red: 29/255, green: 185/255, blue: 84/255))
-                        .foregroundColor(.black)
-                        .cornerRadius(8)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
                     }
                     .buttonStyle(.plain)
+                }
 
-                    if authManager.clientID.isEmpty {
+                if authManager.clientID.isEmpty {
+                    HStack(spacing: 6) {
+                        TextField("Paste Spotify Client ID...", text: $authManager.clientID)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.white.opacity(0.08))
+                            .cornerRadius(6)
+                            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
+
+                        Button(action: {
+                            Task {
+                                try? await authManager.startPKCEAuth()
+                            }
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: "link")
+                                Text("Connect")
+                            }
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(Color(red: 29/255, green: 185/255, blue: 84/255))
+                            .foregroundColor(.black)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(authManager.clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        Button(action: {
+                            Task {
+                                try? await authManager.startPKCEAuth()
+                            }
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "link")
+                                Text("Connect Account")
+                            }
+                            .font(.system(size: 10, weight: .bold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 5)
+                            .background(Color(red: 29/255, green: 185/255, blue: 84/255))
+                            .foregroundColor(.black)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
+
                         Button(action: {
                             SettingsWindowManager.shared.showSettingsWindow()
                         }) {
@@ -250,10 +287,17 @@ public struct SpotifyPlayerView: View {
                                 Text("Settings")
                             }
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
+                            .foregroundColor(Color.white.opacity(0.5))
                         }
                         .buttonStyle(.plain)
                     }
+                }
+
+                if let error = authManager.authError {
+                    Text(error)
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.orange)
+                        .lineLimit(2)
                 }
             }
         }
