@@ -118,3 +118,12 @@ This project is licensed under the [MIT License](LICENSE) - see the LICENSE file
 ## 🤝 Contributing
 
 Contributions, issues, and feature requests are welcome! Feel free to check out the [Issues page](https://github.com/ZeyadE05/Dynamico/issues).
+
+---
+
+## 🛠️ Built With
+
+* **Swift / SwiftUI**
+* **Core Audio & I/O Kit APIs**
+* Prototyped and built with assistance from AI-assisted development tools (Cursor / Claude).
+
