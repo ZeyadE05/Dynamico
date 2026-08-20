@@ -51,7 +51,7 @@ public final class NotchPanelController: NSObject, ObservableObject {
         let canvasRect = NSRect(x: canvasX, y: canvasY, width: canvasW, height: canvasH)
 
         let panel = NotchPanel(contentRect: canvasRect)
-        let tracking = NotchTrackingController()
+        let tracking = NotchTrackingController.shared
         let container = NotchContainerView(frame: NSRect(x: 0, y: 0, width: canvasW, height: canvasH))
 
         container.controller = self

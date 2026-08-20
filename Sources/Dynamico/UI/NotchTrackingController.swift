@@ -126,9 +126,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
 
-        if currentState.isHUD && newState.isHUD {
-            // Keep HUD updated smoothly
-        } else if currentState == newState {
+        if currentState == newState {
             return
         }
 

@@ -126,9 +126,29 @@ public actor MediaBackgroundActor {
         var error: NSDictionary?
         if let appleScript = NSAppleScript(source: script) {
             let output = appleScript.executeAndReturnError(&error)
-            if error == nil {
-                return output.stringValue
+            if error == nil, let val = output.stringValue, !val.isEmpty {
+                return val
             }
+        }
+
+        // Fallback to /usr/bin/osascript execution
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = ["-e", script]
+
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = Pipe()
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+            let data = pipe.fileHandleForReading.readDataToEndOfFile()
+            if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+                return output
+            }
+        } catch {
+            return nil
         }
         return nil
     }

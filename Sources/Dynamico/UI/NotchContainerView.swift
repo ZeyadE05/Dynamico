@@ -17,12 +17,19 @@ public final class NotchContainerView: NSView {
     
     // Subview containers
     private let peekContainerView = NSView()
+    private let hudContainerView = NSView()
     private let expandedContainerView = NSView()
     
-    // Peek & HUD elements
+    // Peek elements
     private let peekIconView = NSImageView()
     private let peekLabel = NSTextField(labelWithString: "Dynamico")
     private let peekSubLabel = NSTextField(labelWithString: "Click to expand")
+
+    // HUD elements
+    private let hudIconView = NSImageView()
+    private let hudProgressBarTrack = NSView()
+    private let hudProgressBarFill = NSView()
+    private let hudPercentageLabel = NSTextField(labelWithString: "0%")
 
     // Expanded elements
     private let headerView = NSView()
@@ -59,6 +66,7 @@ public final class NotchContainerView: NSView {
         registerForDraggedTypes([.fileURL, .string, .tiff, .png])
         setupLayerArchitecture()
         setupPeekView()
+        setupHUDView()
         setupExpandedView()
         setupCombineSubscriptions()
         detectNotchDimensions()
@@ -70,6 +78,7 @@ public final class NotchContainerView: NSView {
         registerForDraggedTypes([.fileURL, .string, .tiff, .png])
         setupLayerArchitecture()
         setupPeekView()
+        setupHUDView()
         setupExpandedView()
         setupCombineSubscriptions()
         detectNotchDimensions()
@@ -129,11 +138,14 @@ public final class NotchContainerView: NSView {
 
         // Add subview containers
         addSubview(peekContainerView)
+        addSubview(hudContainerView)
         addSubview(expandedContainerView)
 
         peekContainerView.alphaValue = 0.0
+        hudContainerView.alphaValue = 0.0
         expandedContainerView.alphaValue = 0.0
         peekContainerView.isHidden = true
+        hudContainerView.isHidden = true
         expandedContainerView.isHidden = true
     }
 
@@ -303,7 +315,7 @@ public final class NotchContainerView: NSView {
             width = calculatedPeekWidth
             height = physicalNotchHeight + 34
         case .hud:
-            width = max(calculatedPeekWidth, 230)
+            width = max(calculatedPeekWidth, 260)
             height = physicalNotchHeight + 34
         case .expanded(let activeTab):
             let contentH: CGFloat
@@ -419,12 +431,14 @@ public final class NotchContainerView: NSView {
         switch state {
         case .collapsed:
             peekContainerView.isHidden = true
+            hudContainerView.isHidden = true
             expandedContainerView.isHidden = true
             expandedContainerView.frame = .zero
             setExpandedControlsEnabled(false)
 
         case .peek:
             peekContainerView.isHidden = false
+            hudContainerView.isHidden = true
             expandedContainerView.isHidden = true
             expandedContainerView.frame = .zero
             peekContainerView.frame = rect
@@ -432,15 +446,17 @@ public final class NotchContainerView: NSView {
             setExpandedControlsEnabled(false)
 
         case .hud(let type, let level):
-            peekContainerView.isHidden = false
+            peekContainerView.isHidden = true
+            hudContainerView.isHidden = false
             expandedContainerView.isHidden = true
             expandedContainerView.frame = .zero
-            peekContainerView.frame = rect
+            hudContainerView.frame = rect
             updateHUDContent(type: type, level: level)
             setExpandedControlsEnabled(false)
 
         case .expanded:
             peekContainerView.isHidden = true
+            hudContainerView.isHidden = true
             expandedContainerView.isHidden = false
             expandedContainerView.frame = rect
             setExpandedControlsEnabled(true)
@@ -453,16 +469,25 @@ public final class NotchContainerView: NSView {
             switch state {
             case .collapsed:
                 peekContainerView.animator().alphaValue = 0.0
+                hudContainerView.animator().alphaValue = 0.0
                 expandedContainerView.animator().alphaValue = 0.0
                 unmountExpandedContentView()
 
-            case .peek, .hud:
+            case .peek:
                 peekContainerView.animator().alphaValue = 1.0
+                hudContainerView.animator().alphaValue = 0.0
+                expandedContainerView.animator().alphaValue = 0.0
+                unmountExpandedContentView()
+
+            case .hud:
+                peekContainerView.animator().alphaValue = 0.0
+                hudContainerView.animator().alphaValue = 1.0
                 expandedContainerView.animator().alphaValue = 0.0
                 unmountExpandedContentView()
 
             case .expanded(let activeTab):
                 peekContainerView.animator().alphaValue = 0.0
+                hudContainerView.animator().alphaValue = 0.0
                 expandedContainerView.animator().alphaValue = 1.0
                 mountExpandedContentView(for: activeTab)
             }
@@ -534,23 +559,92 @@ public final class NotchContainerView: NSView {
         }
     }
 
+    private func setupHUDView() {
+        hudContainerView.wantsLayer = true
+
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        hudIconView.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: "HUD")?.withSymbolConfiguration(config)
+        hudIconView.contentTintColor = NSColor(red: 0, green: 210/255, blue: 255/255, alpha: 1.0)
+        hudIconView.translatesAutoresizingMaskIntoConstraints = false
+
+        hudProgressBarTrack.wantsLayer = true
+        hudProgressBarTrack.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.18).cgColor
+        hudProgressBarTrack.layer?.cornerRadius = 4
+        hudProgressBarTrack.layer?.masksToBounds = true
+        hudProgressBarTrack.translatesAutoresizingMaskIntoConstraints = false
+
+        hudProgressBarFill.wantsLayer = true
+        hudProgressBarFill.layer?.backgroundColor = NSColor(red: 0, green: 210/255, blue: 255/255, alpha: 1.0).cgColor
+        hudProgressBarFill.layer?.cornerRadius = 4
+        hudProgressBarFill.frame = CGRect(x: 0, y: 0, width: 0, height: 8)
+
+        hudProgressBarTrack.addSubview(hudProgressBarFill)
+
+        hudPercentageLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 11, weight: .bold)
+        hudPercentageLabel.textColor = NSColor.white.withAlphaComponent(0.95)
+        hudPercentageLabel.alignment = .right
+        hudPercentageLabel.lineBreakMode = .byClipping
+        hudPercentageLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let stack = NSStackView(views: [hudIconView, hudProgressBarTrack, hudPercentageLabel])
+        stack.orientation = .horizontal
+        stack.spacing = 10
+        stack.alignment = .centerY
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        hudContainerView.addSubview(stack)
+
+        NSLayoutConstraint.activate([
+            hudIconView.widthAnchor.constraint(equalToConstant: 18),
+            hudIconView.heightAnchor.constraint(equalToConstant: 18),
+
+            hudProgressBarTrack.widthAnchor.constraint(equalToConstant: 135),
+            hudProgressBarTrack.heightAnchor.constraint(equalToConstant: 8),
+
+            hudPercentageLabel.widthAnchor.constraint(equalToConstant: 38),
+
+            stack.centerXAnchor.constraint(equalTo: hudContainerView.centerXAnchor),
+            stack.bottomAnchor.constraint(equalTo: hudContainerView.bottomAnchor, constant: -7)
+        ])
+    }
+
     private func updateHUDContent(type: NotchHUDType, level: Double) {
         let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
-        let percentInt = Int(min(max(level, 0.0), 1.0) * 100.0)
+        let clampedLevel = min(max(level, 0.0), 1.0)
+        let percentInt = Int(clampedLevel * 100.0)
 
         switch type {
         case .volume:
-            let iconName = level <= 0 ? "speaker.slash.fill" : "speaker.wave.2.fill"
-            peekIconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Volume")?.withSymbolConfiguration(config)
-            peekIconView.contentTintColor = NSColor(red: 0, green: 210/255, blue: 255/255, alpha: 1.0)
-            peekLabel.stringValue = "Volume"
-            peekSubLabel.stringValue = "\(percentInt)%"
+            let iconName: String
+            if clampedLevel <= 0 {
+                iconName = "speaker.slash.fill"
+            } else if clampedLevel < 0.33 {
+                iconName = "speaker.wave.1.fill"
+            } else if clampedLevel < 0.66 {
+                iconName = "speaker.wave.2.fill"
+            } else {
+                iconName = "speaker.wave.3.fill"
+            }
+            hudIconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Volume")?.withSymbolConfiguration(config)
+            let cyanColor = NSColor(red: 0, green: 210/255, blue: 255/255, alpha: 1.0)
+            hudIconView.contentTintColor = cyanColor
+            hudProgressBarFill.layer?.backgroundColor = cyanColor.cgColor
 
         case .brightness:
-            peekIconView.image = NSImage(systemSymbolName: "sun.max.fill", accessibilityDescription: "Brightness")?.withSymbolConfiguration(config)
-            peekIconView.contentTintColor = NSColor.systemYellow
-            peekLabel.stringValue = "Brightness"
-            peekSubLabel.stringValue = "\(percentInt)%"
+            let iconName = clampedLevel < 0.5 ? "sun.min.fill" : "sun.max.fill"
+            hudIconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Brightness")?.withSymbolConfiguration(config)
+            let yellowColor = NSColor.systemYellow
+            hudIconView.contentTintColor = yellowColor
+            hudProgressBarFill.layer?.backgroundColor = yellowColor.cgColor
+        }
+
+        hudPercentageLabel.stringValue = "\(percentInt)%"
+
+        let targetWidth = 135 * CGFloat(clampedLevel)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.15
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            hudProgressBarFill.animator().frame = CGRect(x: 0, y: 0, width: targetWidth, height: 8)
         }
     }
 

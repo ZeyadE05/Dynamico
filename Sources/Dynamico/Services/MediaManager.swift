@@ -115,49 +115,47 @@ public final class MediaManager: ObservableObject {
 
     // MARK: - Async Now Playing Refresh
 
+    // MARK: - Async Now Playing Refresh
+
     public func refreshNowPlaying() {
         Task {
             let actor = MediaBackgroundActor.shared
-            let isSpotifyRunning = await actor.isSpotifyRunning()
-            
-            if isSpotifyRunning, let spotifyItem = await actor.fetchSpotifyMediaItem(), !spotifyItem.title.isEmpty && spotifyItem.title != "No Track" {
-                let spotifyPlaying: Bool
-                if spotifyItem.isPlaying {
-                    spotifyPlaying = true
-                } else {
-                    spotifyPlaying = await actor.isSpotifyRunningAndPlaying()
-                }
 
-                if spotifyPlaying {
-                    self.currentItem = spotifyItem
-                    self.isPlaying = true
-                    self.updatePollingState(isNotchExpanded: NotchPanelController.shared.isExpanded)
-                    return
-                }
+            // 1. Try Spotify AppleScript query first (fast, direct, supported on macOS with osascript fallback)
+            if await actor.isSpotifyRunning(), let spotifyItem = await actor.fetchSpotifyMediaItem(), !spotifyItem.title.isEmpty, spotifyItem.title != "No Track" {
+                self.currentItem = spotifyItem
+                self.isPlaying = spotifyItem.isPlaying
+                self.updatePollingState(isNotchExpanded: NotchPanelController.shared.isExpanded)
+                return
             }
 
+            // 2. Universal MediaRemote query fallback (Apple Music, Safari, Chrome, TV, Podcasts, etc.)
             if let getNowPlayingInfoFn = self.getNowPlayingInfoFn {
                 getNowPlayingInfoFn(DispatchQueue.main) { [weak self] dict in
                     guard let self = self else { return }
 
-                    let title = dict["kMRMediaRemoteNowPlayingInfoTitle"] as? String ?? ""
-                    let artist = dict["kMRMediaRemoteNowPlayingInfoArtist"] as? String ?? ""
-                    let album = dict["kMRMediaRemoteNowPlayingInfoAlbum"] as? String ?? ""
-                    let duration = dict["kMRMediaRemoteNowPlayingInfoDuration"] as? Double ?? 0.0
-                    let elapsedTime = dict["kMRMediaRemoteNowPlayingInfoElapsedTime"] as? Double ?? 0.0
-                    let playbackRate = dict["kMRMediaRemoteNowPlayingInfoPlaybackRate"] as? Double ?? 0.0
+                    let title = self.getStringValue(from: dict, matching: ["title"]) ?? ""
+                    let artist = self.getStringValue(from: dict, matching: ["artist"]) ?? ""
+                    let album = self.getStringValue(from: dict, matching: ["album"]) ?? ""
+                    let duration = self.getDoubleValue(from: dict, matching: ["duration"])
+                    let elapsedTime = self.getDoubleValue(from: dict, matching: ["elapsedTime", "elapsed", "position"])
+                    let playbackRate = self.getDoubleValue(from: dict, matching: ["playbackRate", "rate"])
                     let isPlaying = playbackRate > 0.0
 
                     var artworkImage: NSImage? = nil
-                    if let artworkData = dict["kMRMediaRemoteNowPlayingInfoArtworkData"] as? Data {
+                    if let artworkData = self.getDataValue(from: dict, matching: ["artworkData", "artwork"]) {
                         artworkImage = NSImage(data: artworkData)
                     }
 
                     var appName = "Media"
-                    if let clientProperties = dict["kMRMediaRemoteNowPlayingInfoClientPropertiesData"] as? Data,
-                       let plist = try? PropertyListSerialization.propertyList(from: clientProperties, options: [], format: nil) as? [String: Any],
+                    if let clientData = self.getDataValue(from: dict, matching: ["clientProperties", "client"]),
+                       let plist = try? PropertyListSerialization.propertyList(from: clientData, options: [], format: nil) as? [String: Any],
                        let bundleIdentifier = plist["kMRMediaRemoteNowPlayingInfoClientPropertiesBundleIdentifier"] as? String {
                         appName = self.appNameForBundleIdentifier(bundleIdentifier)
+                    } else if let bundleID = self.getStringValue(from: dict, matching: ["bundleIdentifier"]) {
+                        appName = self.appNameForBundleIdentifier(bundleID)
+                    } else if self.isAppRunning("com.spotify.client") {
+                        appName = "Spotify"
                     } else if self.isAppRunning("com.apple.Music") {
                         appName = "Apple Music"
                     }
@@ -175,29 +173,63 @@ public final class MediaManager: ObservableObject {
                         )
                         self.isPlaying = isPlaying
                     } else {
-                        Task {
-                            if let spotifyItem = await actor.fetchSpotifyMediaItem() {
-                                self.currentItem = spotifyItem
-                                self.isPlaying = spotifyItem.isPlaying
-                            } else {
-                                self.currentItem = nil
-                                self.isPlaying = false
-                            }
-                        }
+                        self.currentItem = nil
+                        self.isPlaying = false
                     }
                     self.updatePollingState(isNotchExpanded: NotchPanelController.shared.isExpanded)
                 }
             } else {
-                if let spotifyItem = await actor.fetchSpotifyMediaItem() {
-                    self.currentItem = spotifyItem
-                    self.isPlaying = spotifyItem.isPlaying
-                } else {
-                    self.currentItem = nil
-                    self.isPlaying = false
-                }
+                self.currentItem = nil
+                self.isPlaying = false
                 self.updatePollingState(isNotchExpanded: NotchPanelController.shared.isExpanded)
             }
         }
+    }
+
+    private func getStringValue(from dict: [String: Any], matching substrings: [String]) -> String? {
+        for (key, value) in dict {
+            let keyName = String(describing: key)
+            for sub in substrings {
+                if keyName.localizedCaseInsensitiveContains(sub) {
+                    if let str = value as? String, !str.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        return str.trimmingCharacters(in: .whitespacesAndNewlines)
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    private func getDoubleValue(from dict: [String: Any], matching substrings: [String]) -> Double {
+        for (key, value) in dict {
+            let keyName = String(describing: key)
+            for sub in substrings {
+                if keyName.localizedCaseInsensitiveContains(sub) {
+                    if let num = value as? NSNumber {
+                        return num.doubleValue
+                    } else if let dbl = value as? Double {
+                        return dbl
+                    } else if let intVal = value as? Int {
+                        return Double(intVal)
+                    }
+                }
+            }
+        }
+        return 0.0
+    }
+
+    private func getDataValue(from dict: [String: Any], matching substrings: [String]) -> Data? {
+        for (key, value) in dict {
+            let keyName = String(describing: key)
+            for sub in substrings {
+                if keyName.localizedCaseInsensitiveContains(sub) {
+                    if let data = value as? Data {
+                        return data
+                    }
+                }
+            }
+        }
+        return nil
     }
 
     // MARK: - Playback Controls (Background Actor Offloading)
