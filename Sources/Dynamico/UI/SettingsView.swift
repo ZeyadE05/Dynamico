@@ -18,7 +18,6 @@ public enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 public struct SettingsView: View {
-    @ObservedObject var authManager = SpotifyAuthManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
     @ObservedObject var todoistClient = TodoistAPIClient.shared
 
@@ -203,7 +202,7 @@ public struct SettingsView: View {
                 .foregroundColor(Color.white.opacity(0.9))
 
             VStack(spacing: 8) {
-                customToggle(title: "Spotify Player Tab", subtitle: "Playback deck & mini album art", isOn: $settingsManager.showSpotifyTab)
+                customToggle(title: "Media Player Tab", subtitle: "Playback deck & system now playing", isOn: $settingsManager.showSpotifyTab)
                 customToggle(title: "Clipboard History Tab", subtitle: "Passive pasteboard & color inspector", isOn: $settingsManager.showClipboardTab)
                 customToggle(title: "File Shelf Tab", subtitle: "Drag-and-drop file staging zone", isOn: $settingsManager.showFileShelfTab)
                 customToggle(title: "Power Diagnostics Tab", subtitle: "Battery health & top energy consumers", isOn: $settingsManager.showPowerTab)
@@ -219,129 +218,6 @@ public struct SettingsView: View {
     // MARK: - Integrations Tab
     private var integrationsTabContent: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Spotify API Card
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    HStack(spacing: 6) {
-                        Image(systemName: "music.note")
-                            .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
-                        Text("Spotify Integration")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(Color.white.opacity(0.9))
-                    }
-
-                    Spacer()
-
-                    Button(action: {
-                        if let url = URL(string: "https://developer.spotify.com/dashboard") {
-                            NSWorkspace.shared.open(url)
-                        }
-                    }) {
-                        HStack(spacing: 3) {
-                            Text("Open Dashboard")
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Client ID")
-                        .font(.system(size: 9))
-                        .foregroundColor(Color.white.opacity(0.45))
-
-                    TextField("Paste Spotify Client ID here", text: $authManager.clientID)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(6)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.08), lineWidth: 1))
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack {
-                        Text("Redirect URI")
-                            .font(.system(size: 9))
-                            .foregroundColor(Color.white.opacity(0.45))
-                        Spacer()
-                        Button(action: {
-                            NSPasteboard.general.clearContents()
-                            NSPasteboard.general.setString(authManager.redirectURI, forType: .string)
-                        }) {
-                            HStack(spacing: 3) {
-                                Image(systemName: "doc.on.doc")
-                                Text("Copy URI")
-                            }
-                            .font(.system(size: 9, weight: .semibold))
-                            .foregroundColor(Color(red: 29/255, green: 185/255, blue: 84/255))
-                        }
-                        .buttonStyle(.plain)
-                        .help("Copy redirect URI to paste into Spotify Developer Dashboard settings")
-                    }
-
-                    TextField("notchnook://callback", text: $authManager.redirectURI)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 10, design: .monospaced))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(Color.white.opacity(0.06))
-                        .cornerRadius(6)
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.08), lineWidth: 1))
-                }
-
-                if let error = authManager.authError {
-                    Text(error)
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundColor(.orange)
-                        .lineLimit(2)
-                }
-
-                HStack {
-                    if authManager.isAuthenticated {
-                        Button(action: {
-                            authManager.logout()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "xmark.circle.fill")
-                                Text("Disconnect Spotify")
-                            }
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.red.opacity(0.85))
-                        }
-                        .buttonStyle(.plain)
-                    } else {
-                        Button(action: {
-                            Task {
-                                try? await authManager.startPKCEAuth()
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "link")
-                                Text("Connect Account")
-                            }
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .background(Color(red: 29/255, green: 185/255, blue: 84/255))
-                            .foregroundColor(.black)
-                            .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Spacer()
-                }
-            }
-            .padding(12)
-            .background(Color.white.opacity(0.03))
-            .cornerRadius(10)
-            .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06), lineWidth: 1))
 
             // Todoist API Card
             VStack(alignment: .leading, spacing: 10) {

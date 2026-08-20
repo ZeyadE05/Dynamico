@@ -12,7 +12,7 @@ public enum NotchTab: String, CaseIterable, Identifiable {
 
     public var title: String {
         switch self {
-        case .spotify: return "Spotify"
+        case .spotify: return "Media"
         case .clipboard: return "Clipboard"
         case .fileShelf: return "Shelf"
         case .power: return "Power"
@@ -24,7 +24,7 @@ public enum NotchTab: String, CaseIterable, Identifiable {
 
 public struct NotchContentView: View {
     @ObservedObject var controller: NotchPanelController
-    @ObservedObject var spotifyAPI = SpotifyAPIClient.shared
+    @ObservedObject var mediaManager = MediaManager.shared
     @ObservedObject var fileShelf = FileShelfManager.shared
     @ObservedObject var clipboard = ClipboardManager.shared
     @ObservedObject var batteryManager = BatteryManager.shared
@@ -142,7 +142,7 @@ public struct NotchContentView: View {
             Group {
                 switch controller.selectedTab {
                 case .spotify:
-                    SpotifyPlayerView()
+                    MediaPlayerView()
                 case .clipboard:
                     ClipboardView()
                 case .fileShelf:
@@ -152,7 +152,7 @@ public struct NotchContentView: View {
                 case .todoist:
                     TodoistView()
                 default:
-                    SpotifyPlayerView()
+                    MediaPlayerView()
                 }
             }
         }

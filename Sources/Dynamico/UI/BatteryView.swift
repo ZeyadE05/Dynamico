@@ -12,7 +12,7 @@ public struct BatteryView: View {
             HStack {
                 HStack(spacing: 6) {
                     Image(systemName: batteryIconName)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(batteryColor)
 
                     Text("\(batteryManager.batteryPercentage)%")
@@ -66,7 +66,7 @@ public struct BatteryView: View {
                             energyMonitor.sampleTopConsumers(forceRefresh: true)
                         }) {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 11, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.6))
                                 .frame(width: 28, height: 28)
                                 .contentShape(Rectangle())
@@ -108,7 +108,7 @@ public struct BatteryView: View {
     private func metricCard(title: String, value: String, icon: String, iconColor: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 11))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(iconColor)
 
             VStack(alignment: .leading, spacing: 1) {

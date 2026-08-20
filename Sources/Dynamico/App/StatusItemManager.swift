@@ -43,12 +43,6 @@ public final class StatusItemManager: NSObject {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Spotify Auth Option
-        let spotifyTitle = SpotifyAuthManager.shared.isAuthenticated ? "Disconnect Spotify Account" : "Connect Spotify Account"
-        let spotifyItem = NSMenuItem(title: spotifyTitle, action: #selector(toggleSpotifyAuth), keyEquivalent: "")
-        spotifyItem.target = self
-        menu.addItem(spotifyItem)
-
         // Settings Option
         let settingsItem = NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ",")
         settingsItem.target = self
@@ -68,20 +62,6 @@ public final class StatusItemManager: NSObject {
 
     @objc private func toggleNotch() {
         NotchPanelController.shared.toggleExpand()
-    }
-
-    @objc private func toggleSpotifyAuth() {
-        Task {
-            if SpotifyAuthManager.shared.isAuthenticated {
-                SpotifyAuthManager.shared.logout()
-            } else {
-                if SpotifyAuthManager.shared.clientID.isEmpty {
-                    SettingsWindowManager.shared.showSettingsWindow()
-                } else {
-                    try? await SpotifyAuthManager.shared.startPKCEAuth()
-                }
-            }
-        }
     }
 
     @objc private func openSettings() {

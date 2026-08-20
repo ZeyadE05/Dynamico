@@ -9,9 +9,20 @@ public struct ClipboardView: View {
     public var body: some View {
         VStack(spacing: 6) {
             HStack {
-                Text("Clipboard History")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(Color.white.opacity(0.9))
+                HStack(spacing: 6) {
+                    Text("Clipboard History")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.9))
+
+                    if !clipboardManager.items.isEmpty {
+                        Text("\(clipboardManager.items.count)")
+                            .font(.system(size: 9, weight: .bold))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.white.opacity(0.12)))
+                            .foregroundColor(Color.white.opacity(0.8))
+                    }
+                }
 
                 Spacer()
 
@@ -33,7 +44,7 @@ public struct ClipboardView: View {
                 VStack(spacing: 6) {
                     Spacer()
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 22))
+                        .font(.system(size: 32))
                         .foregroundColor(Color.white.opacity(0.25))
                     Text("Clipboard is empty")
                         .font(.system(size: 11, weight: .medium))
@@ -107,21 +118,42 @@ public struct ClipboardView: View {
             if let color = parseHexColor(item.content) {
                 Circle()
                     .fill(color)
-                    .frame(width: 12, height: 12)
+                    .frame(width: 16, height: 16)
                     .overlay(Circle().stroke(Color.white.opacity(0.3), lineWidth: 1))
             } else {
                 Image(systemName: "paintpalette.fill")
-                    .font(.system(size: 11))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.purple)
             }
         case .url:
             Image(systemName: "link")
-                .font(.system(size: 11))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(Color(red: 0, green: 210/255, blue: 255/255))
         case .text:
             Image(systemName: "doc.text")
-                .font(.system(size: 11))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundColor(Color.white.opacity(0.4))
+        case .image:
+            if let nsImg = item.nsImage {
+                Image(nsImage: nsImg)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: 20, height: 20)
+                    .cornerRadius(4)
+                    .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.white.opacity(0.2), lineWidth: 1))
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.orange)
+            }
+        case .rtf:
+            Image(systemName: "text.alignleft")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.green)
+        case .fileURL:
+            Image(systemName: "doc.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.yellow)
         }
     }
 

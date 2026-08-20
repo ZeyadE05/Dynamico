@@ -51,13 +51,20 @@ public struct FileShelfView: View {
         .onDrop(of: [UTType.fileURL], isTargeted: $isTargeted) { providers in
             return handleDrop(providers: providers)
         }
+        .onChange(of: isTargeted) { newValue in
+            NotchPanelController.shared.trackingController?.updateDragTargeted(newValue)
+        }
     }
 
     private var dropZoneArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.12), style: StrokeStyle(lineWidth: 1.5, dash: [5]))
-                .background(RoundedRectangle(cornerRadius: 12).fill(isTargeted ? Color.blue.opacity(0.12) : Color.white.opacity(0.02)))
+                .stroke(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.12), style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.5, dash: [5]))
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255).opacity(0.15) : Color.white.opacity(0.02))
+                )
+                .shadow(color: isTargeted ? Color(red: 0, green: 210/255, blue: 255/255).opacity(0.3) : Color.clear, radius: 8, x: 0, y: 0)
 
             VStack(spacing: 5) {
                 Image(systemName: "tray.and.arrow.down")
@@ -65,7 +72,7 @@ public struct FileShelfView: View {
                     .foregroundColor(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.35))
 
                 Text(isTargeted ? "Drop Files to Stage" : "Drag files here to stage temporarily")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundColor(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.6))
 
                 Text("Drag files back out to Finder or Slack anytime")
@@ -73,6 +80,8 @@ public struct FileShelfView: View {
                     .foregroundColor(Color.white.opacity(0.35))
             }
         }
+        .scaleEffect(isTargeted ? 1.02 : 1.0)
+        .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isTargeted)
         .padding(.horizontal, 16)
         .padding(.bottom, 12)
     }

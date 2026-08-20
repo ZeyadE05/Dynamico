@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import UniformTypeIdentifiers
 
 @MainActor
 public final class ClipboardManager: ObservableObject {
@@ -10,39 +11,122 @@ public final class ClipboardManager: ObservableObject {
     @Published public var lastCopiedItem: ClipboardItem? = nil
 
     private var lastChangeCount: Int = -1
-    private let maxHistoryCount = 15
+    private let maxHistoryCount = 50
+    private var pollTimer: Timer?
 
-    private init() {}
+    private init() {
+        startPolling()
+    }
 
-    /// Passive check triggered ONLY when notch expands or UI is shown. Zero timer loop!
+    deinit {
+        pollTimer?.invalidate()
+    }
+
+    public func startPolling() {
+        guard pollTimer == nil else { return }
+        // Polling loop to capture copies immediately even when notch is collapsed
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.checkPasteboard()
+            }
+        }
+    }
+
+    public func stopPolling() {
+        pollTimer?.invalidate()
+        pollTimer = nil
+    }
+
     public func checkPasteboard() {
-        let currentChangeCount = NSPasteboard.general.changeCount
+        let pasteboard = NSPasteboard.general
+        let currentChangeCount = pasteboard.changeCount
         guard currentChangeCount != lastChangeCount else { return }
         lastChangeCount = currentChangeCount
 
-        guard let string = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !string.isEmpty else { return }
+        // Multi-type extraction pipeline
 
-        // Determine item type
-        let type: ClipboardItemType
-        if isHexColor(string) {
-            type = .hexColor
-        } else if isURL(string) {
-            type = .url
-        } else {
-            type = .text
-        }
-
-        // Avoid duplicate consecutive entry
-        if let first = items.first, first.content == string {
+        // 1. Check for File URL
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           let firstURL = urls.first, firstURL.isFileURL {
+            if let first = items.first, first.type == .fileURL && first.fileURL == firstURL {
+                return
+            }
+            let newItem = ClipboardItem(
+                type: .fileURL,
+                content: firstURL.lastPathComponent,
+                fileURL: firstURL
+            )
+            insertItem(newItem)
             return
         }
 
-        let newItem = ClipboardItem(type: type, content: string)
-        
-        // Insert at beginning, limit to 15
+        // 2. Check for Image (.png, .tiff, UTType.image, NSImage)
+        if pasteboard.canReadObject(forClasses: [NSImage.self], options: nil),
+           let image = NSImage(pasteboard: pasteboard),
+           let tiffData = image.tiffRepresentation,
+           let bitmapRep = NSBitmapImageRep(data: tiffData),
+           let pngData = bitmapRep.representation(using: .png, properties: [:]) {
+            let dimString = "\(Int(image.size.width)) × \(Int(image.size.height)) px"
+            if let first = items.first, first.type == .image, first.imageData == pngData {
+                return
+            }
+            let newItem = ClipboardItem(
+                type: .image,
+                content: "Image (\(dimString))",
+                imageData: pngData
+            )
+            insertItem(newItem)
+            return
+        }
+
+        // 3. Check for RTF
+        if let rtfData = pasteboard.data(forType: .rtf) {
+            let plainText: String
+            if let attrString = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+                plainText = attrString.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            } else {
+                plainText = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            }
+            if !plainText.isEmpty {
+                if let first = items.first, first.type == .rtf && first.content == plainText {
+                    return
+                }
+                let newItem = ClipboardItem(
+                    type: .rtf,
+                    content: plainText,
+                    rtfData: rtfData
+                )
+                insertItem(newItem)
+                return
+            }
+        }
+
+        // 4. Plain Text / URL / HexColor
+        if let string = pasteboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !string.isEmpty {
+            let type: ClipboardItemType
+            if isHexColor(string) {
+                type = .hexColor
+            } else if isURL(string) {
+                type = .url
+            } else {
+                type = .text
+            }
+
+            if let first = items.first, first.content == string && first.type == type {
+                return
+            }
+
+            let newItem = ClipboardItem(type: type, content: string)
+            insertItem(newItem)
+            return
+        }
+    }
+
+    private func insertItem(_ newItem: ClipboardItem) {
         var updated = items
-        updated.removeAll(where: { $0.content == string })
+        // Remove duplicate items with identical content & type
+        updated.removeAll(where: { $0.type == newItem.type && $0.content == newItem.content && $0.fileURL == newItem.fileURL })
         updated.insert(newItem, at: 0)
 
         if updated.count > maxHistoryCount {
@@ -55,9 +139,25 @@ public final class ClipboardManager: ObservableObject {
     public func copyToClipboard(_ item: ClipboardItem) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(item.content, forType: .string)
-        
-        // Update changeCount to avoid self-reimporting as new entry immediately
+
+        switch item.type {
+        case .image:
+            if let image = item.nsImage {
+                pasteboard.writeObjects([image])
+            }
+        case .fileURL:
+            if let url = item.fileURL as NSURL? {
+                pasteboard.writeObjects([url])
+            }
+        case .rtf:
+            if let rtfData = item.rtfData {
+                pasteboard.setData(rtfData, forType: .rtf)
+            }
+            pasteboard.setString(item.content, forType: .string)
+        case .text, .url, .hexColor:
+            pasteboard.setString(item.content, forType: .string)
+        }
+
         self.lastChangeCount = pasteboard.changeCount
         self.lastCopiedItem = item
 

@@ -37,7 +37,7 @@ public struct TodoistView: View {
                             }
                         }) {
                             Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 10, weight: .semibold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(Color.white.opacity(0.5))
                         }
                         .buttonStyle(.plain)
@@ -52,7 +52,7 @@ public struct TodoistView: View {
                                 Text("Open Todoist")
                                 Image(systemName: "arrow.up.right")
                             }
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255))
                         }
                         .buttonStyle(.plain)
@@ -95,7 +95,7 @@ public struct TodoistView: View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "checkmark.circle.badge.questionmark")
-                .font(.system(size: 22))
+                .font(.system(size: 32))
                 .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.85))
 
             Text("Connect Todoist")
@@ -177,7 +177,7 @@ public struct TodoistView: View {
         VStack(spacing: 6) {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 22))
+                .font(.system(size: 32))
                 .foregroundColor(Color.green.opacity(0.7))
 
             Text("All Caught Up!")
@@ -213,9 +213,9 @@ public struct TodoistView: View {
                 }
             }) {
                 Image(systemName: "circle")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(priorityColor(task.priority))
-                    .frame(width: 18, height: 18)
+                    .frame(width: 22, height: 22)
             }
             .buttonStyle(.plain)
             .help("Mark complete")
@@ -230,7 +230,7 @@ public struct TodoistView: View {
                 if let due = task.due, let label = due.string ?? due.date {
                     HStack(spacing: 3) {
                         Image(systemName: "calendar")
-                            .font(.system(size: 8))
+                            .font(.system(size: 9))
                         Text(label)
                             .font(.system(size: 8, weight: .semibold))
                     }
@@ -246,7 +246,7 @@ public struct TodoistView: View {
                     NSWorkspace.shared.open(taskUrl)
                 }) {
                     Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9))
+                        .font(.system(size: 10))
                         .foregroundColor(Color.white.opacity(0.3))
                 }
                 .buttonStyle(.plain)
@@ -280,8 +280,8 @@ public struct TodoistView: View {
                 submitNewTask()
             }) {
                 Image(systemName: "plus")
-                    .font(.system(size: 10, weight: .bold))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 14, weight: .bold))
+                    .frame(width: 26, height: 26)
                     .background(Color(red: 228/255, green: 71/255, blue: 62/255))
                     .foregroundColor(.white)
                     .cornerRadius(6)
