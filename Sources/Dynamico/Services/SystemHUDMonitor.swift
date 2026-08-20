@@ -2,21 +2,43 @@ import AppKit
 import CoreAudio
 import Combine
 
-/// Event-driven monitor for CoreAudio system volume and display brightness changes.
-/// Triggers fluid Dynamic Notch HUD overlays without any polling timers.
+/// Event-driven monitor & controller for system volume and display brightness hardware keys.
+/// Triggers fluid Dynamic Notch HUD overlays instantly without polling timers.
 @MainActor
 public final class SystemHUDMonitor: ObservableObject {
     public static let shared = SystemHUDMonitor()
 
-    private var audioDeviceListenerBlock: AudioObjectPropertyListenerBlock?
+    private var globalEventMonitor: Any?
     private var defaultOutputDeviceID: AudioObjectID = kAudioObjectUnknown
 
+    // DisplayServices Private Framework C function pointers
+    private typealias DisplayServicesGetLinearBrightnessFn = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
+    private typealias DisplayServicesSetLinearBrightnessFn = @convention(c) (CGDirectDisplayID, Float) -> Int32
+
+    private var getLinearBrightnessFn: DisplayServicesGetLinearBrightnessFn?
+    private var setLinearBrightnessFn: DisplayServicesSetLinearBrightnessFn?
+
     private init() {
+        setupDisplayServices()
         setupVolumeListener()
-        setupBrightnessObservers()
+        setupMediaKeyMonitor()
     }
 
-    // MARK: - CoreAudio Event-Driven Volume Listener
+    // MARK: - DisplayServices Private Framework Loader
+
+    private func setupDisplayServices() {
+        guard let handle = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_NOW) else {
+            return
+        }
+        if let getPtr = dlsym(handle, "DisplayServicesGetLinearBrightness") {
+            getLinearBrightnessFn = unsafeBitCast(getPtr, to: DisplayServicesGetLinearBrightnessFn.self)
+        }
+        if let setPtr = dlsym(handle, "DisplayServicesSetLinearBrightness") {
+            setLinearBrightnessFn = unsafeBitCast(setPtr, to: DisplayServicesSetLinearBrightnessFn.self)
+        }
+    }
+
+    // MARK: - CoreAudio Volume Listener & Setter
 
     private func setupVolumeListener() {
         var defaultDeviceID = AudioObjectID(kAudioObjectUnknown)
@@ -42,7 +64,7 @@ public final class SystemHUDMonitor: ObservableObject {
         var volumeAddress = AudioObjectPropertyAddress(
             mSelector: kAudioDevicePropertyVolumeScalar,
             mScope: kAudioDevicePropertyScopeOutput,
-            mElement: kAudioObjectPropertyElementMain
+            mElement: kAudioObjectPropertyElementWildcard
         )
 
         let listener: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
@@ -50,11 +72,9 @@ public final class SystemHUDMonitor: ObservableObject {
                 self?.handleVolumeChanged()
             }
         }
-        self.audioDeviceListenerBlock = listener
 
         AudioObjectAddPropertyListenerBlock(defaultDeviceID, &volumeAddress, DispatchQueue.main, listener)
 
-        // DistributedNotificationCenter fallback observer
         DistributedNotificationCenter.default().addObserver(
             forName: NSNotification.Name("com.apple.sound.soundchanged"),
             object: nil,
@@ -82,60 +102,45 @@ public final class SystemHUDMonitor: ObservableObject {
         )
 
         let status = AudioObjectGetPropertyData(defaultOutputDeviceID, &address, 0, nil, &propertySize, &volume)
-        if status == noErr {
-            return volume
-        }
+        if status == noErr { return volume }
 
-        // Try channel 1 if main element fails
         address.mElement = 1
         let statusCh1 = AudioObjectGetPropertyData(defaultOutputDeviceID, &address, 0, nil, &propertySize, &volume)
-        if statusCh1 == noErr {
-            return volume
-        }
+        if statusCh1 == noErr { return volume }
 
         return nil
     }
 
-    // MARK: - Event-Driven Brightness Observer
+    public func setSystemVolumeScalar(_ level: Float) {
+        guard defaultOutputDeviceID != kAudioObjectUnknown else { return }
+        var newVolume = min(max(level, 0.0), 1.0)
+        let propertySize = UInt32(MemoryLayout<Float>.size)
 
-    private func setupBrightnessObservers() {
-        let brightnessNotifications = [
-            "com.apple.brightnessChanged",
-            "com.apple.screenIsBrightness",
-            "com.apple.brightness.changed",
-            "com.apple.ambientlight"
-        ]
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyVolumeScalar,
+            mScope: kAudioDevicePropertyScopeOutput,
+            mElement: kAudioObjectPropertyElementMain
+        )
 
-        for name in brightnessNotifications {
-            DistributedNotificationCenter.default().addObserver(
-                forName: NSNotification.Name(name),
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                Task { @MainActor in
-                    self?.handleBrightnessChanged(notification: notification)
-                }
-            }
-        }
+        _ = AudioObjectSetPropertyData(defaultOutputDeviceID, &address, 0, nil, propertySize, &newVolume)
+
+        address.mElement = 1
+        _ = AudioObjectSetPropertyData(defaultOutputDeviceID, &address, 0, nil, propertySize, &newVolume)
+
+        address.mElement = 2
+        _ = AudioObjectSetPropertyData(defaultOutputDeviceID, &address, 0, nil, propertySize, &newVolume)
     }
 
-    private func handleBrightnessChanged(notification: Notification) {
-        var brightness: Double = 0.5
-
-        if let userInfo = notification.userInfo {
-            if let level = userInfo["brightness"] as? Double {
-                brightness = level
-            } else if let level = userInfo["DisplayBrightness"] as? Double {
-                brightness = level
-            }
-        } else {
-            brightness = getCurrentDisplayBrightness()
-        }
-
-        NotchTrackingController.shared.showHUD(type: .brightness, level: brightness)
-    }
+    // MARK: - Display Brightness Getter & Setter
 
     public func getCurrentDisplayBrightness() -> Double {
+        if let getFn = getLinearBrightnessFn {
+            var brightness: Float = 0.5
+            if getFn(CGMainDisplayID(), &brightness) == 0 {
+                return Double(brightness)
+            }
+        }
+
         var brightness: Float = 0.5
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IODisplayConnect"))
         if service != 0 {
@@ -144,5 +149,76 @@ public final class SystemHUDMonitor: ObservableObject {
             return Double(brightness)
         }
         return 0.5
+    }
+
+    public func setDisplayBrightness(_ level: Double) {
+        let clamped = Float(min(max(level, 0.0), 1.0))
+        if let setFn = setLinearBrightnessFn {
+            _ = setFn(CGMainDisplayID(), clamped)
+            return
+        }
+
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IODisplayConnect"))
+        if service != 0 {
+            IODisplaySetFloatParameter(service, 0, kIODisplayBrightnessKey as CFString, clamped)
+            IOObjectRelease(service)
+        }
+    }
+
+    // MARK: - Global Media Key Hardware Event Tap (System-Defined Aux Keys)
+
+    private func setupMediaKeyMonitor() {
+        globalEventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .systemDefined) { [weak self] event in
+            guard event.subtype.rawValue == 8 else { return }
+            let data1 = event.data1
+            let keyCode = (data1 & 0xFFFF0000) >> 16
+            let keyFlags = data1 & 0x0000FFFF
+            let isKeyDown = ((keyFlags & 0xFF00) >> 8) == 0xA
+
+            guard isKeyDown else { return }
+
+            Task { @MainActor [weak self] in
+                self?.handleMediaKey(keyCode: keyCode)
+            }
+        }
+    }
+
+    private func handleMediaKey(keyCode: Int) {
+        // Key Codes:
+        // 0 = Volume Up, 1 = Volume Down, 2 = Brightness Up, 3 = Brightness Down, 7 = Mute
+        switch keyCode {
+        case 2: // Brightness Up
+            let current = getCurrentDisplayBrightness()
+            let next = min(1.0, current + 0.0625)
+            setDisplayBrightness(next)
+            NotchTrackingController.shared.showHUD(type: .brightness, level: next)
+
+        case 3: // Brightness Down
+            let current = getCurrentDisplayBrightness()
+            let next = max(0.0, current - 0.0625)
+            setDisplayBrightness(next)
+            NotchTrackingController.shared.showHUD(type: .brightness, level: next)
+
+        case 0: // Volume Up
+            let current = Double(getSystemVolumeScalar() ?? 0.5)
+            let next = min(1.0, current + 0.0625)
+            setSystemVolumeScalar(Float(next))
+            NotchTrackingController.shared.showHUD(type: .volume, level: next)
+
+        case 1: // Volume Down
+            let current = Double(getSystemVolumeScalar() ?? 0.5)
+            let next = max(0.0, current - 0.0625)
+            setSystemVolumeScalar(Float(next))
+            NotchTrackingController.shared.showHUD(type: .volume, level: next)
+
+        case 7: // Mute
+            let current = Double(getSystemVolumeScalar() ?? 0.5)
+            let next = current > 0 ? 0.0 : 0.5
+            setSystemVolumeScalar(Float(next))
+            NotchTrackingController.shared.showHUD(type: .volume, level: next)
+
+        default:
+            break
+        }
     }
 }
