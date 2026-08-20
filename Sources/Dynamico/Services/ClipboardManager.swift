@@ -15,17 +15,29 @@ public final class ClipboardManager: ObservableObject {
     private var pollTimer: Timer?
 
     private init() {
-        startPolling()
+        // Initial check on launch
+        checkPasteboard()
     }
 
     deinit {
         pollTimer?.invalidate()
     }
 
+    /// Adaptive timer controller.
+    /// Polling runs ONLY when the notch is active/expanded to conserve background energy.
+    /// When collapsed, pasteboard is checked on demand when notch expands or peeks.
+    public func updatePollingState(isNotchExpanded: Bool) {
+        if isNotchExpanded {
+            startPolling()
+            checkPasteboard()
+        } else {
+            stopPolling()
+        }
+    }
+
     public func startPolling() {
         guard pollTimer == nil else { return }
-        // Polling loop to capture copies immediately even when notch is collapsed
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.checkPasteboard()
             }

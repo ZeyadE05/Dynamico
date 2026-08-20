@@ -4,7 +4,9 @@ import AppKit
 public struct TodoistView: View {
     @ObservedObject var todoist = TodoistAPIClient.shared
     @State private var newTaskTitle: String = ""
+    @State private var tokenInput: String = ""
     @State private var isSubmitting: Bool = false
+    @State private var hoveredTaskId: String? = nil
 
     public init() {}
 
@@ -15,15 +17,15 @@ public struct TodoistView: View {
                 HStack(spacing: 6) {
                     Text("Todoist")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.9))
+                        .foregroundColor(Theme.textPrimary)
 
                     if todoist.isAuthenticated && !todoist.tasks.isEmpty {
                         Text("\(todoist.tasks.count)")
                             .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.25)))
-                            .foregroundColor(Color(red: 255/255, green: 110/255, blue: 100/255))
+                            .background(Capsule().fill(Theme.todoistRed.opacity(0.25)))
+                            .foregroundColor(Theme.todoistRed)
                     }
                 }
 
@@ -32,18 +34,21 @@ public struct TodoistView: View {
                 HStack(spacing: 8) {
                     if todoist.isAuthenticated {
                         Button(action: {
+                            Theme.playHaptic(.alignment)
                             Task {
                                 await todoist.fetchTasks()
                             }
                         }) {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundColor(Color.white.opacity(0.5))
+                                .foregroundColor(Theme.textMuted)
                         }
                         .buttonStyle(.plain)
+                        .pointerCursorOnHover()
                         .help("Refresh tasks")
 
                         Button(action: {
+                            Theme.playHaptic(.alignment)
                             if let url = URL(string: "https://todoist.com/app") {
                                 NSWorkspace.shared.open(url)
                             }
@@ -53,9 +58,10 @@ public struct TodoistView: View {
                                 Image(systemName: "arrow.up.right")
                             }
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255))
+                            .foregroundColor(Theme.todoistRed)
                         }
                         .buttonStyle(.plain)
+                        .pointerCursorOnHover()
                     }
                 }
             }
@@ -96,14 +102,15 @@ public struct TodoistView: View {
             Spacer()
             Image(systemName: "checkmark.circle.badge.questionmark")
                 .font(.system(size: 32))
-                .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.85))
+                .foregroundColor(Theme.todoistRed.opacity(0.85))
 
             Text("Connect Todoist")
                 .font(.system(size: 11, weight: .bold))
-                .foregroundColor(Color.white.opacity(0.9))
+                .foregroundColor(Theme.textPrimary)
 
             HStack(spacing: 6) {
                 Button(action: {
+                    Theme.playHaptic(.alignment)
                     if let url = URL(string: "https://todoist.com/app/settings/integrations") {
                         NSWorkspace.shared.open(url)
                     }
@@ -114,35 +121,37 @@ public struct TodoistView: View {
                         Image(systemName: "arrow.up.right")
                     }
                     .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255))
+                    .foregroundColor(Theme.todoistRed)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.15))
+                    .background(Theme.todoistRed.opacity(0.15))
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
+                .pointerCursorOnHover()
                 .help("Opens Todoist settings page where your API token is located at the bottom")
             }
 
             HStack(spacing: 6) {
-                SecureField("Paste API Token here...", text: $newTaskTitle)
+                SecureField("Paste API Token here...", text: $tokenInput)
                     .textFieldStyle(.plain)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundColor(.white)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.08))
+                    .background(Color.white.opacity(Theme.surfaceHigh))
                     .cornerRadius(6)
                     .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
                     .frame(maxWidth: 240)
 
                 Button(action: {
-                    let token = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                    Theme.playHaptic(.levelChange)
+                    let token = tokenInput.trimmingCharacters(in: .whitespacesAndNewlines)
                     guard !token.isEmpty else { return }
                     Task {
                         let success = await todoist.saveToken(token)
                         if success {
-                            newTaskTitle = ""
+                            tokenInput = ""
                         }
                     }
                 }) {
@@ -153,19 +162,20 @@ public struct TodoistView: View {
                     .font(.system(size: 10, weight: .bold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 5)
-                    .background(Color(red: 228/255, green: 71/255, blue: 62/255))
+                    .background(Theme.todoistRed)
                     .foregroundColor(.white)
                     .cornerRadius(6)
                 }
                 .buttonStyle(.plain)
-                .disabled(newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .pointerCursorOnHover()
+                .disabled(tokenInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .padding(.top, 2)
 
             if let error = todoist.errorMessage {
                 Text(error)
                     .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.orange)
+                    .foregroundColor(Theme.orangeAccent)
                     .multilineTextAlignment(.center)
             }
 
@@ -178,15 +188,15 @@ public struct TodoistView: View {
             Spacer()
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 32))
-                .foregroundColor(Color.green.opacity(0.7))
+                .foregroundColor(Theme.spotifyGreen.opacity(0.8))
 
             Text("All Caught Up!")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.75))
+                .foregroundColor(Theme.textPrimary)
 
             Text("No active tasks in your Todoist inbox.")
                 .font(.system(size: 9))
-                .foregroundColor(Color.white.opacity(0.4))
+                .foregroundColor(Theme.textMuted)
 
             Spacer()
         }
@@ -205,9 +215,12 @@ public struct TodoistView: View {
     }
 
     private func taskRow(_ task: TodoistTask) -> some View {
-        HStack(spacing: 8) {
+        let isHovered = (hoveredTaskId == task.id)
+
+        return HStack(spacing: 8) {
             // Checkbox to complete task
             Button(action: {
+                Theme.playHaptic(.levelChange)
                 Task {
                     await todoist.completeTask(id: task.id)
                 }
@@ -218,13 +231,14 @@ public struct TodoistView: View {
                     .frame(width: 22, height: 22)
             }
             .buttonStyle(.plain)
+            .pointerCursorOnHover()
             .help("Mark complete")
 
             // Task Content
             VStack(alignment: .leading, spacing: 2) {
                 Text(task.content)
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.9))
+                    .foregroundColor(Theme.textPrimary)
                     .lineLimit(1)
 
                 if let due = task.due, let label = due.string ?? due.date {
@@ -234,7 +248,7 @@ public struct TodoistView: View {
                         Text(label)
                             .font(.system(size: 8, weight: .semibold))
                     }
-                    .foregroundColor(Color(red: 228/255, green: 71/255, blue: 62/255).opacity(0.9))
+                    .foregroundColor(Theme.todoistRed.opacity(0.9))
                 }
             }
 
@@ -243,23 +257,28 @@ public struct TodoistView: View {
             // Optional direct task web URL link
             if let rawUrl = task.url, let taskUrl = URL(string: rawUrl) {
                 Button(action: {
+                    Theme.playHaptic(.alignment)
                     NSWorkspace.shared.open(taskUrl)
                 }) {
                     Image(systemName: "arrow.up.right")
                         .font(.system(size: 10))
-                        .foregroundColor(Color.white.opacity(0.3))
+                        .foregroundColor(Theme.textMuted)
                 }
                 .buttonStyle(.plain)
+                .pointerCursorOnHover()
             }
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .background(Color.white.opacity(0.04))
+        .background(Color.white.opacity(isHovered ? Theme.surfaceActive : Theme.surfaceLow))
         .cornerRadius(6)
         .overlay(
             RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                .stroke(isHovered ? Theme.todoistRed.opacity(0.3) : Color.white.opacity(Theme.surfaceMid), lineWidth: 1)
         )
+        .onHover { hovering in
+            hoveredTaskId = hovering ? task.id : nil
+        }
     }
 
     private var quickAddBar: some View {
@@ -272,9 +291,9 @@ public struct TodoistView: View {
             .foregroundColor(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.white.opacity(0.06))
+            .background(Color.white.opacity(Theme.surfaceMid))
             .cornerRadius(6)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.08), lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(Theme.surfaceHigh), lineWidth: 1))
 
             Button(action: {
                 submitNewTask()
@@ -282,11 +301,12 @@ public struct TodoistView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .bold))
                     .frame(width: 26, height: 26)
-                    .background(Color(red: 228/255, green: 71/255, blue: 62/255))
+                    .background(Theme.todoistRed)
                     .foregroundColor(.white)
                     .cornerRadius(6)
             }
             .buttonStyle(.plain)
+            .pointerCursorOnHover()
             .disabled(newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSubmitting)
             .opacity(newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1.0)
         }
@@ -298,6 +318,7 @@ public struct TodoistView: View {
         let title = newTaskTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty, !isSubmitting else { return }
 
+        Theme.playHaptic(.levelChange)
         isSubmitting = true
         Task {
             let success = await todoist.addTask(content: title)
@@ -309,12 +330,12 @@ public struct TodoistView: View {
     }
 
     private func priorityColor(_ priority: Int?) -> Color {
-        guard let p = priority else { return Color.white.opacity(0.4) }
+        guard let p = priority else { return Theme.textMuted }
         switch p {
-        case 4: return Color(red: 228/255, green: 71/255, blue: 62/255) // Todoist p1 (Urgent Red)
-        case 3: return Color.orange // Todoist p2 (Orange)
-        case 2: return Color.blue // Todoist p3 (Blue)
-        default: return Color.white.opacity(0.45) // Todoist p4 (Normal/Clear)
+        case 4: return Theme.todoistRed
+        case 3: return Theme.orangeAccent
+        case 2: return Color.blue
+        default: return Theme.textMuted
         }
     }
 }

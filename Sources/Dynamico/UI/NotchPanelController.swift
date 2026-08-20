@@ -3,7 +3,7 @@ import Combine
 
 /// Coordinator for the macOS Notch Utility.
 /// Manages the fixed-canvas transparent host window, event-driven tracking controller,
-/// and GPU-accelerated layer container.
+/// GPU-accelerated layer container, and screen parameter reconfigurations.
 @MainActor
 public final class NotchPanelController: NSObject, ObservableObject {
     public static let shared = NotchPanelController()
@@ -35,6 +35,7 @@ public final class NotchPanelController: NSObject, ObservableObject {
     override private init() {
         super.init()
         setupPanelArchitecture()
+        setupScreenChangeObserver()
     }
 
     public func setupPanelArchitecture() {
@@ -69,6 +70,35 @@ public final class NotchPanelController: NSObject, ObservableObject {
         // Apply the correct ignoresMouseEvents, global mouse monitor, and tracking area
         // for the initial .collapsed state in one atomic call.
         tracking.configureForCurrentState()
+    }
+
+    private func setupScreenChangeObserver() {
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didChangeScreenParametersNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDisplayReconfiguration()
+            }
+        }
+    }
+
+    public func handleDisplayReconfiguration() {
+        guard let screen = NSScreen.main, let panel = panel else { return }
+        let screenFrame = screen.frame
+
+        let canvasW: CGFloat = min(720, screenFrame.width - 20)
+        let canvasH: CGFloat = 260
+        let canvasX = screenFrame.origin.x + (screenFrame.width - canvasW) / 2
+        let canvasY = screenFrame.origin.y + screenFrame.height - canvasH
+
+        let newCanvasRect = NSRect(x: canvasX, y: canvasY, width: canvasW, height: canvasH)
+        panel.setFrame(newCanvasRect, display: true, animate: false)
+
+        containerView?.detectNotchDimensions()
+        containerView?.rebuildHeaderButtons()
+        containerView?.updateShapeForCurrentState(animated: false)
     }
 
     public func toggleExpand() {

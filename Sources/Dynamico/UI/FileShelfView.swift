@@ -1,9 +1,11 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import AppKit
 
 public struct FileShelfView: View {
     @ObservedObject var shelfManager = FileShelfManager.shared
     @State private var isTargeted: Bool = false
+    @State private var hoveredCardId: UUID? = nil
 
     public init() {}
 
@@ -13,14 +15,14 @@ public struct FileShelfView: View {
                 HStack(spacing: 6) {
                     Text("File Shelf Drop Zone")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.9))
+                        .foregroundColor(Theme.textPrimary)
 
                     if !shelfManager.stagedFiles.isEmpty {
                         Text("\(shelfManager.stagedFiles.count)")
                             .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(Color(red: 0, green: 210/255, blue: 255/255)))
+                            .background(Capsule().fill(Theme.cyanAccent))
                             .foregroundColor(.black)
                     }
                 }
@@ -29,13 +31,15 @@ public struct FileShelfView: View {
 
                 if !shelfManager.stagedFiles.isEmpty {
                     Button(action: {
+                        Theme.playHaptic(.levelChange)
                         shelfManager.clearAll()
                     }) {
                         Text("Clear All")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(.red.opacity(0.75))
+                            .foregroundColor(Theme.todoistRed.opacity(0.85))
                     }
                     .buttonStyle(.plain)
+                    .pointerCursorOnHover()
                 }
             }
             .padding(.horizontal, 16)
@@ -53,31 +57,37 @@ public struct FileShelfView: View {
         }
         .onChange(of: isTargeted) { newValue in
             NotchPanelController.shared.trackingController?.updateDragTargeted(newValue)
+            if newValue {
+                Theme.playHaptic(.alignment)
+            }
         }
     }
 
     private var dropZoneArea: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 12)
-                .stroke(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.12), style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.5, dash: [5]))
+                .stroke(
+                    isTargeted ? Theme.cyanAccent : Color.white.opacity(Theme.surfaceActive),
+                    style: StrokeStyle(lineWidth: isTargeted ? 2.0 : 1.5, dash: [5])
+                )
                 .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .fill(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255).opacity(0.15) : Color.white.opacity(0.02))
+                        .fill(isTargeted ? Theme.cyanAccent.opacity(0.15) : Color.white.opacity(Theme.surfaceLow))
                 )
-                .shadow(color: isTargeted ? Color(red: 0, green: 210/255, blue: 255/255).opacity(0.3) : Color.clear, radius: 8, x: 0, y: 0)
+                .shadow(color: isTargeted ? Theme.cyanAccent.opacity(0.35) : Color.clear, radius: 8, x: 0, y: 0)
 
             VStack(spacing: 5) {
                 Image(systemName: "tray.and.arrow.down")
                     .font(.system(size: 24))
-                    .foregroundColor(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.35))
+                    .foregroundColor(isTargeted ? Theme.cyanAccent : Theme.textSecondary)
 
                 Text(isTargeted ? "Drop Files to Stage" : "Drag files here to stage temporarily")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundColor(isTargeted ? Color(red: 0, green: 210/255, blue: 255/255) : Color.white.opacity(0.6))
+                    .foregroundColor(isTargeted ? Theme.cyanAccent : Theme.textPrimary)
 
-                Text("Drag files back out to Finder or Slack anytime")
+                Text("Drag files back out to Finder, Slack, or email anytime")
                     .font(.system(size: 9))
-                    .foregroundColor(Color.white.opacity(0.35))
+                    .foregroundColor(Theme.textMuted)
             }
         }
         .scaleEffect(isTargeted ? 1.02 : 1.0)
@@ -99,43 +109,56 @@ public struct FileShelfView: View {
     }
 
     private func stagedFileCard(_ file: StagedFile) -> some View {
-        VStack(spacing: 5) {
+        let isHovered = (hoveredCardId == file.id)
+
+        return VStack(spacing: 5) {
             ZStack(alignment: .topTrailing) {
                 Image(nsImage: file.fileIcon)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 40, height: 40)
                     .padding(8)
-                    .background(Color.white.opacity(0.04))
+                    .background(Color.white.opacity(isHovered ? Theme.surfaceActive : Theme.surfaceLow))
                     .cornerRadius(10)
-                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.white.opacity(0.06), lineWidth: 1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isHovered ? Theme.cyanAccent.opacity(0.4) : Color.white.opacity(Theme.surfaceMid), lineWidth: 1)
+                    )
 
                 Button(action: {
+                    Theme.playHaptic(.alignment)
                     shelfManager.removeFile(file)
                 }) {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.4))
+                        .foregroundColor(Theme.textMuted)
                         .background(Circle().fill(Color.black))
                 }
                 .buttonStyle(.plain)
+                .pointerCursorOnHover()
                 .offset(x: 4, y: -4)
             }
 
             VStack(spacing: 2) {
                 Text(file.name)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundColor(Color.white.opacity(0.85))
+                    .foregroundColor(Theme.textPrimary)
                     .lineLimit(1)
                     .frame(width: 68)
 
                 Text(file.sizeFormatted)
                     .font(.system(size: 8))
-                    .foregroundColor(Color.white.opacity(0.35))
+                    .foregroundColor(Theme.textMuted)
             }
         }
+        .scaleEffect(isHovered ? 1.04 : 1.0)
+        .animation(.easeInOut(duration: 0.15), value: isHovered)
+        .onHover { hovering in
+            hoveredCardId = hovering ? file.id : nil
+        }
         .onDrag {
-            NSItemProvider(object: file.url as NSURL)
+            Theme.playHaptic(.alignment)
+            return NSItemProvider(object: file.url as NSURL)
         }
     }
 
@@ -147,6 +170,7 @@ public struct FileShelfView: View {
                       let url = URL(dataRepresentation: data, relativeTo: nil) else {
                     if let url = itemData as? URL {
                         Task { @MainActor in
+                            Theme.playHaptic(.levelChange)
                             shelfManager.stageFiles(from: [url])
                         }
                     }
@@ -154,6 +178,7 @@ public struct FileShelfView: View {
                 }
 
                 Task { @MainActor in
+                    Theme.playHaptic(.levelChange)
                     shelfManager.stageFiles(from: [url])
                 }
             }

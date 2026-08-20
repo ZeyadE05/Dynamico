@@ -5,7 +5,7 @@ import Combine
 
 /// Layer-backed drawing container for the macOS Notch utility.
 /// Handles GPU-accelerated CAShapeLayer bezier path morphing driven by CASpringAnimation,
-/// synchronized CATransaction opacity transitions, and lightweight subview mounting.
+/// cached NSHostingView subview hierarchy reuse, synchronized shadow paths, and lightweight subview mounting.
 public final class NotchContainerView: NSView {
 
     // MARK: - Properties
@@ -29,6 +29,9 @@ public final class NotchContainerView: NSView {
     private let tabButtonsStack = NSStackView()
     private let rightButtonsStack = NSStackView()
     private var tabContentHostView: NSView?
+    
+    // Hosting View Cache for 60/120Hz Tab Switching (Zero Re-allocation)
+    private var hostingViewCache: [NotchTab: NSHostingView<AnyView>] = [:]
     private var currentHostingView: NSView?
 
     private var cancellables = Set<AnyCancellable>()
@@ -36,7 +39,7 @@ public final class NotchContainerView: NSView {
     // Calculated dynamic width for peek state
     private var calculatedPeekWidth: CGFloat = 240
 
-    // Click gesture guard to prevent expansion click from bleeding into newly unhidden header buttons (Settings / Tabs)
+    // Click gesture guard to prevent expansion click from bleeding into newly unhidden header buttons
     private var didExpandOnCurrentMouseDown: Bool = false
     private var expansionTimestamp: TimeInterval = 0
 
@@ -256,7 +259,7 @@ public final class NotchContainerView: NSView {
     // MARK: - Notch Dimensions Detection
 
     public func detectNotchDimensions() {
-        guard let screen = NSScreen.main else {
+        guard let screen = window?.screen ?? NSScreen.main else {
             physicalNotchWidth = 185
             physicalNotchHeight = 32
             return
@@ -357,6 +360,11 @@ public final class NotchContainerView: NSView {
     public func stateDidChange(from oldState: NotchState, to newState: NotchState, animated: Bool) {
         updateShapeForCurrentState(animated: animated)
         updateSubviewsForState(newState, animated: animated)
+
+        // Inform managers of adaptive polling state
+        let isExpanded = newState.isExpanded
+        ClipboardManager.shared.updatePollingState(isNotchExpanded: isExpanded)
+        MediaManager.shared.updatePollingState(isNotchExpanded: isExpanded)
     }
 
     public func updateShapeForCurrentState(animated: Bool) {
@@ -366,6 +374,7 @@ public final class NotchContainerView: NSView {
         let radius = cornerRadiusForState(state)
         let newPath = createNotchPath(rect: rect, cornerRadius: radius)
 
+        // Synchronize shadowPath along with path to prevent real-time software shadow recalculations
         if animated {
             let springAnim = CASpringAnimation(keyPath: "path")
             springAnim.mass = springMass
@@ -375,10 +384,26 @@ public final class NotchContainerView: NSView {
             springAnim.toValue = newPath
             springAnim.duration = springAnim.settlingDuration
 
+            let shadowAnim = CASpringAnimation(keyPath: "shadowPath")
+            shadowAnim.mass = springMass
+            shadowAnim.stiffness = springStiffness
+            shadowAnim.damping = springDamping
+            shadowAnim.fromValue = notchShapeLayer.shadowPath
+            shadowAnim.toValue = newPath
+            shadowAnim.duration = springAnim.settlingDuration
+
+            CATransaction.begin()
             notchShapeLayer.path = newPath
+            notchShapeLayer.shadowPath = newPath
             notchShapeLayer.add(springAnim, forKey: "morphPath")
+            notchShapeLayer.add(shadowAnim, forKey: "shadowPath")
+            CATransaction.commit()
         } else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
             notchShapeLayer.path = newPath
+            notchShapeLayer.shadowPath = newPath
+            CATransaction.commit()
         }
 
         trackingController.updateTrackingArea(for: self)
@@ -599,6 +624,7 @@ public final class NotchContainerView: NSView {
         guard trackingController?.currentState.isExpanded == true else { return }
         guard ProcessInfo.processInfo.systemUptime - expansionTimestamp > 0.25 else { return }
         guard let rawVal = sender.identifier?.rawValue, let tab = NotchTab(rawValue: rawVal) else { return }
+        Theme.playHaptic(.alignment)
         trackingController?.selectTab(tab)
         rebuildHeaderButtons()
         updateShapeForCurrentState(animated: true)
@@ -607,39 +633,66 @@ public final class NotchContainerView: NSView {
     @objc private func openSettingsClicked() {
         guard trackingController?.currentState.isExpanded == true else { return }
         guard ProcessInfo.processInfo.systemUptime - expansionTimestamp > 0.25 else { return }
+        Theme.playHaptic(.alignment)
         SettingsWindowManager.shared.showSettingsWindow()
     }
 
     @objc private func collapseClicked() {
         guard trackingController?.currentState.isExpanded == true else { return }
         guard ProcessInfo.processInfo.systemUptime - expansionTimestamp > 0.25 else { return }
+        Theme.playHaptic(.levelChange)
         trackingController?.setNotchState(.collapsed, animated: true)
     }
 
-    // MARK: - Content Mounting / Unmounting (Zero Background Overhead)
+    // MARK: - Content Mounting / Unmounting (Hosting View Cache for 60/120Hz Smoothness)
 
     private func mountExpandedContentView(for activeTab: NotchTab? = nil) {
         guard let hostView = tabContentHostView else { return }
         let selectedTab = activeTab ?? controller?.selectedTab ?? .spotify
         
-        currentHostingView?.removeFromSuperview()
-        currentHostingView = nil
+        let oldHostingView = currentHostingView
 
-        let content: AnyView
-        switch selectedTab {
-        case .spotify: content = AnyView(MediaPlayerView())
-        case .clipboard: content = AnyView(ClipboardView())
-        case .fileShelf: content = AnyView(FileShelfView())
-        case .power: content = AnyView(BatteryView())
-        case .todoist: content = AnyView(TodoistView())
-        default: content = AnyView(MediaPlayerView())
+        let hostingView: NSHostingView<AnyView>
+        if let cached = hostingViewCache[selectedTab] {
+            hostingView = cached
+        } else {
+            let content: AnyView
+            switch selectedTab {
+            case .spotify: content = AnyView(MediaPlayerView())
+            case .clipboard: content = AnyView(ClipboardView())
+            case .fileShelf: content = AnyView(FileShelfView())
+            case .power: content = AnyView(BatteryView())
+            case .todoist: content = AnyView(TodoistView())
+            default: content = AnyView(MediaPlayerView())
+            }
+
+            let newHosting = NSHostingView(rootView: content)
+            newHosting.autoresizingMask = [.width, .height]
+            newHosting.wantsLayer = true
+            hostingViewCache[selectedTab] = newHosting
+            hostingView = newHosting
         }
 
-        let hosting = NSHostingView(rootView: content)
-        hosting.autoresizingMask = [.width, .height]
-        hosting.frame = hostView.bounds
-        hostView.addSubview(hosting)
-        currentHostingView = hosting
+        hostingView.frame = hostView.bounds
+        hostingView.layer?.opacity = 0.0
+        hostingView.layer?.transform = CATransform3DMakeScale(0.97, 0.97, 1.0)
+        
+        hostView.addSubview(hostingView)
+        currentHostingView = hostingView
+
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.18
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            
+            hostingView.animator().layer?.opacity = 1.0
+            hostingView.animator().layer?.transform = CATransform3DIdentity
+            
+            oldHostingView?.animator().layer?.opacity = 0.0
+        } completionHandler: {
+            if oldHostingView !== hostingView {
+                oldHostingView?.removeFromSuperview()
+            }
+        }
     }
 
     private func unmountExpandedContentView() {

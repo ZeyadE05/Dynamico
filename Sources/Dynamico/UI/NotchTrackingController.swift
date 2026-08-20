@@ -27,37 +27,26 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     @Published public private(set) var isDragActive: Bool = false
 
     public weak var containerView: NotchContainerView?
-
-    /// Weak back-reference to the host panel, wired by `NotchPanelController`.
-    /// Used to flip `ignoresMouseEvents` in lock-step with state transitions.
     public weak var panel: NotchPanel?
 
     private var trackingArea: NSTrackingArea?
-
-    // Global mouse-moved monitor used exclusively in .collapsed state because
-    // ignoresMouseEvents = true prevents NSTrackingArea from delivering any events
-    // to the panel — the WindowServer never routes tracking callbacks to a window
-    // that opts out of mouse events.
     private var globalMouseMonitor: Any?
 
-    // Tab Persistence Key
     private static let lastActiveTabKey = "last_active_notch_tab_session"
 
-    /// Tab persistence manager (defaults to Media Player .spotify on fresh boot)
     public var lastActiveTab: NotchTab {
         get {
             if let saved = UserDefaults.standard.string(forKey: Self.lastActiveTabKey),
                let tab = NotchTab(rawValue: saved) {
                 return tab
             }
-            return .spotify // System boot / fresh launch default
+            return .spotify
         }
         set {
             UserDefaults.standard.set(newValue.rawValue, forKey: Self.lastActiveTabKey)
         }
     }
 
-    // 700ms Grace Period Debounce Work Item
     private var collapseWorkItem: DispatchWorkItem?
 
     public override init() {
@@ -99,7 +88,6 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     // MARK: - State Management
 
     public func setNotchState(_ newState: NotchState, animated: Bool = true) {
-        // Cancel any pending collapse when transitioning explicitly
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
 
@@ -107,23 +95,14 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         let previousState = currentState
         currentState = newState
 
-        // 1. Synchronise window-level ignoresMouseEvents *before* any view updates so that
-        //    the WindowServer cannot route a stale click to the wrong target window.
         panel?.applyMousePassThrough(for: newState)
-
-        // 2. Install or tear down the global monitor depending on whether we need
-        //    out-of-band hover detection (collapsed) or rely on tracking areas (peek/expanded).
         syncGlobalMonitor(for: newState)
-
-        // 3. Haptic feedback
         triggerHapticFeedback(for: newState, from: previousState)
 
         if case .expanded(let tab) = newState {
-            // Save last active tab
             lastActiveTab = tab
             containerView?.controller?.selectedTab = tab
 
-            // Passive data refresh on expansion
             ClipboardManager.shared.checkPasteboard()
             EnergyMonitor.shared.sampleTopConsumers()
             Task {
@@ -151,13 +130,10 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     private func triggerHapticFeedback(for newState: NotchState, from oldState: NotchState) {
         switch (oldState, newState) {
         case (.collapsed, .peek):
-            // Firm levelChange pulse when hovering into notch area
             performStrongHaptic(.levelChange)
         case (_, .expanded):
-            // Strong double-burst levelChange click on expansion
             performBurstHaptic(.levelChange, count: 2)
         case (.expanded, .collapsed), (.peek, .collapsed):
-            // Crisp feedback on collapse
             performStrongHaptic(.levelChange)
         default:
             performStrongHaptic(.generic)
@@ -189,11 +165,8 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         }
     }
 
-    // MARK: - Global Monitor (collapsed-state hover detection)
+    // MARK: - Global Monitor (High-Performance Fast-Filtered Hover Detection)
 
-    /// Applies the global monitor lifecycle change for the new state.
-    /// Called synchronously at the start of every `setNotchState(_:animated:)` transition
-    /// before any view or tracking-area updates.
     private func syncGlobalMonitor(for state: NotchState) {
         switch state {
         case .collapsed:
@@ -206,12 +179,14 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     private func installGlobalMonitor() {
         guard globalMouseMonitor == nil else { return }
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
+            let mouseScreen = NSEvent.mouseLocation
+            
+            // Fast Top-Screen Boundary Rejection: If cursor is not near screen top, skip immediately
+            guard let mainScreen = NSScreen.main, mouseScreen.y >= (mainScreen.frame.maxY - 50) else { return }
+
             DispatchQueue.main.async { [weak self] in
                 guard let self = self, self.currentState == .collapsed else { return }
-                guard let container = self.containerView,
-                      let window = container.window else { return }
-
-                let mouseScreen = NSEvent.mouseLocation
+                guard let container = self.containerView, let window = container.window else { return }
 
                 let hitBoundsView   = container.physicalNotchHitBounds()
                 let hitBoundsWindow = container.convert(hitBoundsView, to: nil)

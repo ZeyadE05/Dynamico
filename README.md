@@ -1,42 +1,41 @@
 # Dynamico 🚀
 
-**Dynamico** is a native, lightweight macOS menu bar utility that transforms your MacBook's camera notch (or top screen area) into an interactive productivity dashboard. 
+**Dynamico** is a native, ultra-lightweight macOS menu bar utility that transforms your MacBook's camera notch (or top screen area) into an interactive, fluid productivity dashboard.
 
-Built completely in **SwiftUI** and **AppKit**, Dynamico expands smoothly from the notch when hovered or clicked, giving you instant access to media controls, task management, clipboard history, file staging, and power monitoring—without interrupting your workflow.
+Built entirely in **SwiftUI** and **AppKit**, Dynamico morphs seamlessly from the notch when hovered or clicked, providing instant access to media controls, task management, clipboard history, file staging, and power diagnostics—without interrupting your workflow.
 
 ---
 
 ## 🌟 Key Features
 
-* 🎵 **Spotify Media Controls**
-  * Full player control directly under the notch (Play, Pause, Skip, Previous).
-  * Real-time track progress slider and volume control.
-  * Album artwork rendering and live metadata display.
-  * OAuth 2.0 Web API authentication stored securely in macOS Keychain.
+* 🎵 **System-Wide Media Player (Zero-OAuth)**
+  * Displays whatever media is currently playing across macOS (**Spotify**, **Apple Music**, **Safari/Chrome**, **Podcasts**, **Apple TV**, etc.).
+  * Automatic priority detection: prioritizes Spotify when running and active.
+  * Real-time track metadata, interactive progress bar, system volume control, and animated audio equalizer visualizer.
+  * **Zero Setup Required**: Uses native macOS `MediaRemote` and AppleScript for instant playback control without Spotify Developer API keys or OAuth logins.
 
 * 📝 **Todoist Task Manager**
   * Quick-add tasks directly to your Todoist Inbox.
-  * View active task list with priority indicators and due dates.
-  * One-click task completion (`/close` endpoint integration).
+  * View active task lists with color-coded priority indicators and due dates.
+  * One-click task completion with instant haptic feedback.
 
-* 📋 **Clipboard Manager**
-  * Automatic clipboard history tracking.
-  * Searchable text snippets for quick retrieval.
-  * One-click re-copy back to active clipboard.
+* 📋 **Clipboard History Manager**
+  * Passive clipboard history tracking with color inspector, URL badges, and image previews.
+  * Searchable text snippets for instant retrieval.
+  * One-click copy back to active pasteboard with subtle haptic confirmation.
 
 * 📥 **File Shelf (Staging Area)**
-  * Drag-and-drop file staging area under the notch.
-  * Temporarily store images, documents, or archives before moving them to another app.
-  * Drag staged items directly out of the notch to Finder, emails, or chat apps.
+  * Drag-and-drop file staging target under the notch.
+  * Temporarily stage images, documents, or archives before moving them to another app.
+  * Previews system file icons (`NSWorkspace`) and supports dragging staged items directly back out to Finder, Slack, or email.
 
-* ⚡ **Battery & Power Monitor**
-  * Real-time battery percentage and charging state.
-  * Thermal state and power source indicator.
+* ⚡ **Power Diagnostics**
+  * Real-time battery percentage, charging state, thermal state, and power source indicators.
 
-* ⚙️ **Customizable Settings & Layout**
-  * Toggle tab visibility (Spotify, Todoist, Clipboard, Shelf, Power).
-  * Toggle icon labels in the notch header bar.
-  * Manage API credentials safely via native Settings window.
+* 🎨 **Design System & Interaction Physics**
+  * Centralized `Theme` design system with brand accents, surface opacity standards, and pointer-cursor hover feedback.
+  * Native macOS `NSHapticFeedbackManager` triggers on snaps, drops, and tab transitions.
+  * Smooth `0.18s` layer crossfade and scale transform tab mounting.
 
 ---
 
@@ -44,13 +43,13 @@ Built completely in **SwiftUI** and **AppKit**, Dynamico expands smoothly from t
 
 * **OS:** macOS 13.0 (Ventura) or later.
 * **Architecture:** Universal (Apple Silicon M1/M2/M3/M4 & Intel Macs).
-* **Hardware:** Designed for MacBook camera notch screens, but fully functional on non-notch Mac displays.
+* **Hardware:** Optimized for MacBook camera notch displays, but fully functional on non-notch Mac screens.
 
 ---
 
 ## 🛠️ Building & Installation
 
-### Option 1: Automated Build & Install (Recommended)
+### Option 1: Automated Release Build & Install (Recommended)
 
 1. Clone the repository:
    ```bash
@@ -58,20 +57,18 @@ Built completely in **SwiftUI** and **AppKit**, Dynamico expands smoothly from t
    cd Dynamico
    ```
 
-2. Make the build script executable and run it:
+2. Run the automated build script:
    ```bash
    chmod +x build_app.sh
    ./build_app.sh
    ```
-   *This script compiles the release binary using SwiftPM, packages the `Dynamico.app` bundle, installs it directly into `/Applications`, and registers it with LaunchServices.*
+   *This script compiles the release binary via SwiftPM, packages the `Dynamico.app` bundle, installs it directly into `/Applications`, and registers it with LaunchServices.*
 
 3. Launch **Dynamico** from your `/Applications` folder or Spotlight (`Cmd + Space` -> *Dynamico*).
 
 ---
 
 ### Option 2: Swift Package Manager CLI
-
-If you only want to build the executable binary:
 
 ```bash
 # Build debug binary
@@ -81,51 +78,30 @@ swift build
 swift build -c release
 ```
 
-The compiled binary will be located in `.build/release/Dynamico`.
+The compiled executable will be output to `.build/release/Dynamico`.
 
 ---
 
-## 🔑 Initial Configuration
+## 🔑 Configuration
 
-After launching Dynamico for the first time:
+After launching Dynamico:
 
-1. Click the **Gear icon (Settings)** in the expanded notch panel or menu bar icon.
-2. **Spotify Integration:**
-   * Create an application in the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard).
-   * Add `notchnook://spotify-callback` to your Spotify App's **Redirect URIs**.
-   * Copy your **Client ID** into Dynamico Settings and click **Connect Spotify**.
-3. **Todoist Integration:**
-   * Grab your API Token from [Todoist Settings > Integrations](https://todoist.com/app/settings/integrations).
-   * Paste your token into Dynamico Settings and click **Save Token**.
+1. **Media Player:** Works automatically out of the box for Spotify, Apple Music, and web media. No login or Client ID configuration required!
+2. **Todoist Integration (Optional):**
+   * Obtain your personal API Token from [Todoist Settings > Integrations](https://todoist.com/app/settings/integrations).
+   * Enter your token in the Todoist tab or Settings window to sync your tasks.
 
 ---
 
 ## 🛠️ Architecture & Tech Stack
 
 * **Language:** Swift 5.9+
-* **Frameworks:** SwiftUI, AppKit, Combine, Foundation, Security (Keychain)
-* **Windowing:** Custom floating `NSPanel` with borderless transparent canvas, level elevated to `.floating`, tracking mouse hover events.
-* **Security:** Sensitive tokens (Spotify OAuth Token, Todoist API Token) stored via macOS Keychain Services (`SecItemAdd` / `SecItemCopyMatching`).
+* **Frameworks:** SwiftUI, AppKit, Combine, Foundation, Security (Keychain), `MediaRemote.framework`
+* **Windowing:** Custom floating `NSPanel` with elevated floating layer level (`.floating`) and GPU-accelerated `CASpringAnimation` layer container.
+* **Audio & Media:** Dynamic loading of macOS `MediaRemote` private framework with native AppleScript control fallbacks.
 
 ---
 
 ## 📄 License
 
 This project is licensed under the [MIT License](LICENSE) - see the LICENSE file for details.
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! Feel free to check out the [Issues page](https://github.com/ZeyadE05/Dynamico/issues).
-
----
-
-## 🛠️ Built With
-
-* **Swift / SwiftUI / AppKit**
-* **IOKit Power & SmartBattery APIs**
-* **Spotify Web API & Todoist REST API**
-* Prototyped and built with assistance from AI-assisted development tools (Cursor / Claude).
-
-

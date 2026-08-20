@@ -3,6 +3,7 @@ import SwiftUI
 public struct ClipboardView: View {
     @ObservedObject var clipboardManager = ClipboardManager.shared
     @State private var copiedItemId: UUID? = nil
+    @State private var hoveredItemId: UUID? = nil
 
     public init() {}
 
@@ -12,15 +13,15 @@ public struct ClipboardView: View {
                 HStack(spacing: 6) {
                     Text("Clipboard History")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.9))
+                        .foregroundColor(Theme.textPrimary)
 
                     if !clipboardManager.items.isEmpty {
                         Text("\(clipboardManager.items.count)")
                             .font(.system(size: 9, weight: .bold))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Capsule().fill(Color.white.opacity(0.12)))
-                            .foregroundColor(Color.white.opacity(0.8))
+                            .background(Capsule().fill(Theme.cyanAccent.opacity(0.2)))
+                            .foregroundColor(Theme.cyanAccent)
                     }
                 }
 
@@ -28,13 +29,15 @@ public struct ClipboardView: View {
 
                 if !clipboardManager.items.isEmpty {
                     Button(action: {
+                        Theme.playHaptic(.levelChange)
                         clipboardManager.clearHistory()
                     }) {
                         Text("Clear")
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundColor(Color.white.opacity(0.4))
+                            .foregroundColor(Theme.textMuted)
                     }
                     .buttonStyle(.plain)
+                    .pointerCursorOnHover()
                 }
             }
             .padding(.horizontal, 16)
@@ -45,10 +48,10 @@ public struct ClipboardView: View {
                     Spacer()
                     Image(systemName: "doc.on.clipboard")
                         .font(.system(size: 32))
-                        .foregroundColor(Color.white.opacity(0.25))
+                        .foregroundColor(Theme.textMuted.opacity(0.5))
                     Text("Clipboard is empty")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.4))
+                        .foregroundColor(Theme.textMuted)
                     Spacer()
                 }
             } else {
@@ -67,7 +70,10 @@ public struct ClipboardView: View {
     }
 
     private func clipboardRow(_ item: ClipboardItem) -> some View {
-        Button(action: {
+        let isHovered = (hoveredItemId == item.id)
+
+        return Button(action: {
+            Theme.playHaptic(.alignment)
             clipboardManager.copyToClipboard(item)
             withAnimation(.spring(response: 0.2, dampingFraction: 0.7)) {
                 copiedItemId = item.id
@@ -84,7 +90,7 @@ public struct ClipboardView: View {
 
                 Text(item.displayTitle)
                     .font(item.type == .hexColor ? .system(size: 11, weight: .semibold, design: .monospaced) : .system(size: 11))
-                    .foregroundColor(Color.white.opacity(0.85))
+                    .foregroundColor(Theme.textPrimary)
                     .lineLimit(1)
 
                 Spacer(minLength: 0)
@@ -92,23 +98,27 @@ public struct ClipboardView: View {
                 if copiedItemId == item.id {
                     Text("Copied")
                         .font(.system(size: 9, weight: .bold))
-                        .foregroundColor(.green)
+                        .foregroundColor(Theme.spotifyGreen)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(Capsule().fill(Color.green.opacity(0.15)))
+                        .background(Capsule().fill(Theme.spotifyGreen.opacity(0.18)))
                         .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 7)
-            .background(Color.white.opacity(0.04))
+            .background(Color.white.opacity(isHovered ? Theme.surfaceActive : Theme.surfaceLow))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                    .stroke(isHovered ? Theme.cyanAccent.opacity(0.3) : Color.white.opacity(Theme.surfaceMid), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
+        .pointerCursorOnHover()
+        .onHover { hovering in
+            hoveredItemId = hovering ? item.id : nil
+        }
     }
 
     @ViewBuilder
@@ -123,16 +133,16 @@ public struct ClipboardView: View {
             } else {
                 Image(systemName: "paintpalette.fill")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.purple)
+                    .foregroundColor(Theme.purpleAccent)
             }
         case .url:
             Image(systemName: "link")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color(red: 0, green: 210/255, blue: 255/255))
+                .foregroundColor(Theme.cyanAccent)
         case .text:
             Image(systemName: "doc.text")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(Color.white.opacity(0.4))
+                .foregroundColor(Theme.textMuted)
         case .image:
             if let nsImg = item.nsImage {
                 Image(nsImage: nsImg)
@@ -144,12 +154,12 @@ public struct ClipboardView: View {
             } else {
                 Image(systemName: "photo")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.orange)
+                    .foregroundColor(Theme.orangeAccent)
             }
         case .rtf:
             Image(systemName: "text.alignleft")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundColor(.green)
+                .foregroundColor(Theme.spotifyGreen)
         case .fileURL:
             Image(systemName: "doc.fill")
                 .font(.system(size: 15, weight: .semibold))

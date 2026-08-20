@@ -24,10 +24,6 @@ public enum NotchTab: String, CaseIterable, Identifiable {
 
 public struct NotchContentView: View {
     @ObservedObject var controller: NotchPanelController
-    @ObservedObject var mediaManager = MediaManager.shared
-    @ObservedObject var fileShelf = FileShelfManager.shared
-    @ObservedObject var clipboard = ClipboardManager.shared
-    @ObservedObject var batteryManager = BatteryManager.shared
     @ObservedObject var settingsManager = SettingsManager.shared
 
     public init(controller: NotchPanelController) {
