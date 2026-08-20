@@ -7,6 +7,9 @@ public final class EnergyMonitor: ObservableObject {
     public static let shared = EnergyMonitor()
 
     @Published public var topConsumers: [EnergyConsumerProcess] = []
+    @Published public var aggregateCPULoad: Double = 0.0
+    @Published public var memoryUsageFormatted: String = "-- GB"
+    @Published public var memoryPercentage: Double = 0.0
     @Published public var isSampling: Bool = false
 
     private var lastSampleTime: Date?
@@ -15,6 +18,7 @@ public final class EnergyMonitor: ObservableObject {
     private init() {}
 
     /// Triggered strictly on notch panel expansion. Zero timer loops!
+    /// Computes process impacts, aggregate CPU load, and system memory pressure in a single shared pass.
     public func sampleTopConsumers(forceRefresh: Bool = false) {
         if let lastSample = lastSampleTime, !forceRefresh {
             if Date().timeIntervalSince(lastSample) < sampleInterval {
@@ -26,16 +30,20 @@ public final class EnergyMonitor: ObservableObject {
         self.lastSampleTime = Date()
 
         Task.detached(priority: .userInitiated) {
-            let samples = await self.fetchTopEnergyProcesses()
+            let result = await self.fetchSystemMetricsAndProcesses()
             await MainActor.run {
-                self.topConsumers = samples
+                self.topConsumers = result.processes
+                self.aggregateCPULoad = result.aggregateCPU
+                self.memoryUsageFormatted = result.ramFormatted
+                self.memoryPercentage = result.ramPercent
                 self.isSampling = false
             }
         }
     }
 
-    private nonisolated func fetchTopEnergyProcesses() async -> [EnergyConsumerProcess] {
-        // Step 1: Collect initial CPU tick snapshot
+    private nonisolated func fetchSystemMetricsAndProcesses() async -> (processes: [EnergyConsumerProcess], aggregateCPU: Double, ramFormatted: String, ramPercent: Double) {
+        // Step 1: Collect initial CPU tick snapshot (Per-PID and System Host)
+        let cpuTicks1 = getHostCPUTicks()
         let pids1 = getActivePIDs()
         var snapshot1: [pid_t: UInt64] = [:]
         for pid in pids1 {
@@ -48,6 +56,7 @@ public final class EnergyMonitor: ObservableObject {
         try? await Task.sleep(nanoseconds: 100_000_000)
 
         // Step 2: Collect second CPU tick snapshot
+        let cpuTicks2 = getHostCPUTicks()
         var processImpacts: [(pid_t, String, Double, NSImage?)] = []
         let myPID = ProcessInfo.processInfo.processIdentifier
 
@@ -60,7 +69,6 @@ public final class EnergyMonitor: ObservableObject {
             let cpuPercent = (Double(timeDelta) / 100_000_000.0) * 100.0
 
             if cpuPercent > 0.5 {
-                // Resolve user application details
                 if let app = NSRunningApplication(processIdentifier: pid),
                    let appName = app.localizedName,
                    !appName.isEmpty {
@@ -86,8 +94,73 @@ public final class EnergyMonitor: ObservableObject {
 
         let sortedResult = Array(uniqueApps.values)
             .sorted { $0.cpuPercentage > $1.cpuPercentage }
+        let top4Processes = Array(sortedResult.prefix(4))
 
-        return Array(sortedResult.prefix(4))
+        // Step 3: Compute Aggregate System CPU Load %
+        let aggregateCPU = calculateHostCPULoad(ticks1: cpuTicks1, ticks2: cpuTicks2)
+
+        // Step 4: Compute System Memory (RAM) Metrics
+        let (ramFormatted, ramPercent) = getSystemRAMMetrics()
+
+        return (top4Processes, aggregateCPU, ramFormatted, ramPercent)
+    }
+
+    // MARK: - Host System CPU & RAM Utilities
+
+    private nonisolated func getHostCPUTicks() -> host_cpu_load_info? {
+        var cpuInfo = host_cpu_load_info()
+        var count = mach_msg_type_number_t(MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &cpuInfo) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? cpuInfo : nil
+    }
+
+    private nonisolated func calculateHostCPULoad(ticks1: host_cpu_load_info?, ticks2: host_cpu_load_info?) -> Double {
+        guard let t1 = ticks1, let t2 = ticks2 else { return 0.0 }
+        let user = Double(t2.cpu_ticks.0 - t1.cpu_ticks.0)
+        let system = Double(t2.cpu_ticks.1 - t1.cpu_ticks.1)
+        let idle = Double(t2.cpu_ticks.2 - t1.cpu_ticks.2)
+        let nice = Double(t2.cpu_ticks.3 - t1.cpu_ticks.3)
+
+        let total = user + system + idle + nice
+        guard total > 0 else { return 0.0 }
+
+        let used = user + system + nice
+        return (used / total) * 100.0
+    }
+
+    private nonisolated func getSystemRAMMetrics() -> (formatted: String, percentage: Double) {
+        var stats = vm_statistics64()
+        var count = mach_msg_type_number_t(MemoryLayout<vm_statistics64_data_t>.size / MemoryLayout<integer_t>.size)
+        let result = withUnsafeMutablePointer(to: &stats) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                host_statistics64(mach_host_self(), HOST_VM_INFO64, $0, &count)
+            }
+        }
+
+        guard result == KERN_SUCCESS else {
+            return ("-- GB", 0.0)
+        }
+
+        let pageSize = UInt64(vm_kernel_page_size)
+        let active = UInt64(stats.active_count) * pageSize
+        let wired = UInt64(stats.wire_count) * pageSize
+        let compressed = UInt64(stats.compressor_page_count) * pageSize
+
+        let usedBytes = active + wired + compressed
+        let totalBytes = ProcessInfo.processInfo.physicalMemory
+
+        guard totalBytes > 0 else { return ("-- GB", 0.0) }
+
+        let usedGB = Double(usedBytes) / 1_073_741_824.0
+        let totalGB = Double(totalBytes) / 1_073_741_824.0
+        let percent = (Double(usedBytes) / Double(totalBytes)) * 100.0
+
+        let formatted = String(format: "%.1f / %.0f GB", usedGB, totalGB)
+        return (formatted, percent)
     }
 
     private nonisolated func getActivePIDs() -> [pid_t] {

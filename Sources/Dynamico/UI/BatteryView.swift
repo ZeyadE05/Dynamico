@@ -41,11 +41,12 @@ public struct BatteryView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            // Health & Hardware Diagnostics Grid
+            // System Load & Memory Pressure Metric Row
             HStack(spacing: 8) {
-                metricCard(title: "Health", value: "\(batteryManager.healthPercentage)%", icon: "heart.fill", iconColor: .red)
+                metricCard(title: "CPU Load", value: String(format: "%.1f%%", energyMonitor.aggregateCPULoad), icon: "cpu", iconColor: Theme.cyanAccent)
+                metricCard(title: "RAM Usage", value: energyMonitor.memoryUsageFormatted, icon: "memorychip", iconColor: Theme.purpleAccent)
+                metricCard(title: "Battery Health", value: "\(batteryManager.healthPercentage)%", icon: "heart.fill", iconColor: .red)
                 metricCard(title: "Cycles", value: "\(batteryManager.cycleCount)", icon: "arrow.triangle.2.circlepath", iconColor: .blue)
-                metricCard(title: "Temp", value: batteryManager.temperatureFormatted, icon: "thermometer.medium", iconColor: .orange)
             }
             .padding(.horizontal, 16)
 
@@ -108,20 +109,21 @@ public struct BatteryView: View {
     private func metricCard(title: String, value: String, icon: String, iconColor: Color) -> some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(iconColor)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 9))
+                    .font(.system(size: 8))
                     .foregroundColor(Color.white.opacity(0.4))
                 Text(value)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 10, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 7)
         .padding(.vertical, 5)
         .background(Color.white.opacity(0.04))
         .cornerRadius(6)

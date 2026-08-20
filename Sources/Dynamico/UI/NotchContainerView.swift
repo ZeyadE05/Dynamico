@@ -5,7 +5,7 @@ import Combine
 
 /// Layer-backed drawing container for the macOS Notch utility.
 /// Handles GPU-accelerated CAShapeLayer bezier path morphing driven by CASpringAnimation,
-/// cached NSHostingView subview hierarchy reuse, synchronized shadow paths, and lightweight subview mounting.
+/// system HUD banner animations, cached NSHostingView subview hierarchy reuse, synchronized shadow paths, and lightweight subview mounting.
 public final class NotchContainerView: NSView {
 
     // MARK: - Properties
@@ -19,7 +19,7 @@ public final class NotchContainerView: NSView {
     private let peekContainerView = NSView()
     private let expandedContainerView = NSView()
     
-    // Peek elements
+    // Peek & HUD elements
     private let peekIconView = NSImageView()
     private let peekLabel = NSTextField(labelWithString: "Dynamico")
     private let peekSubLabel = NSTextField(labelWithString: "Click to expand")
@@ -30,7 +30,7 @@ public final class NotchContainerView: NSView {
     private let rightButtonsStack = NSStackView()
     private var tabContentHostView: NSView?
     
-    // Hosting View Cache for 60/120Hz Tab Switching (Zero Re-allocation)
+    // Hosting View Cache for 60/120Hz Tab Switching
     private var hostingViewCache: [NotchTab: NSHostingView<AnyView>] = [:]
     private var currentHostingView: NSView?
 
@@ -39,11 +39,11 @@ public final class NotchContainerView: NSView {
     // Calculated dynamic width for peek state
     private var calculatedPeekWidth: CGFloat = 240
 
-    // Click gesture guard to prevent expansion click from bleeding into newly unhidden header buttons
+    // Click gesture guard
     private var didExpandOnCurrentMouseDown: Bool = false
     private var expansionTimestamp: TimeInterval = 0
 
-    // Spring animation constants matching NotchNook fluid physics (Damping ~0.85, Stiffness ~300)
+    // Spring animation constants
     private let springMass: CGFloat = 1.0
     private let springStiffness: CGFloat = 300.0
     private let springDamping: CGFloat = 27.0
@@ -82,7 +82,9 @@ public final class NotchContainerView: NSView {
         MediaManager.shared.$currentItem
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.updatePeekContent()
+                if self?.trackingController?.currentState == .peek {
+                    self?.updatePeekContent()
+                }
             }
             .store(in: &cancellables)
     }
@@ -95,7 +97,7 @@ public final class NotchContainerView: NSView {
         let subLabelText = peekSubLabel.stringValue
         let subLabelIntrinsicW = subLabelText.isEmpty ? 0 : peekSubLabel.intrinsicContentSize.width
         let spacing: CGFloat = subLabelText.isEmpty ? 6 : 12
-        let padding: CGFloat = 32 // 16pt left + 16pt right
+        let padding: CGFloat = 32
 
         let totalContentWidth = iconW + labelIntrinsicW + subLabelIntrinsicW + spacing + padding
         let minW = max(physicalNotchWidth + 60, 240)
@@ -135,7 +137,7 @@ public final class NotchContainerView: NSView {
         expandedContainerView.isHidden = true
     }
 
-    // MARK: - Hit Testing Override (Pass-Through & Strict Bezier Path Rule)
+    // MARK: - Hit Testing Override
 
     override public func hitTest(_ point: NSPoint) -> NSView? {
         guard let tracking = trackingController else { return nil }
@@ -145,9 +147,9 @@ public final class NotchContainerView: NSView {
         case .collapsed:
             return nil
 
-        case .peek:
-            let peekRect = currentBoundsForState(.peek)
-            let path = createNotchPath(rect: peekRect, cornerRadius: cornerRadiusForState(.peek))
+        case .peek, .hud:
+            let rect = currentBoundsForState(state)
+            let path = createNotchPath(rect: rect, cornerRadius: cornerRadiusForState(state))
             return path.contains(point) ? self : nil
 
         case .expanded:
@@ -160,7 +162,7 @@ public final class NotchContainerView: NSView {
         }
     }
 
-    // MARK: - Mouse Down Event Intercept & Anti-Settings Guard
+    // MARK: - Mouse Down Event Intercept
 
     override public func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
@@ -173,7 +175,7 @@ public final class NotchContainerView: NSView {
         let peekRect = currentBoundsForState(.peek)
         let collapsedRect = physicalNotchHitBounds()
 
-        if state == .peek || state == .collapsed {
+        if state == .peek || state == .collapsed || state.isHUD {
             if peekRect.contains(point) || collapsedRect.contains(point) {
                 didExpandOnCurrentMouseDown = true
                 expansionTimestamp = ProcessInfo.processInfo.systemUptime
@@ -203,7 +205,7 @@ public final class NotchContainerView: NSView {
         super.mouseUp(with: event)
     }
 
-    // MARK: - NSDraggingDestination Support for Top Screen Boundary Dragging
+    // MARK: - NSDraggingDestination Support
 
     public override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         let point = convert(sender.draggingLocation, from: nil)
@@ -300,6 +302,9 @@ public final class NotchContainerView: NSView {
         case .peek:
             width = calculatedPeekWidth
             height = physicalNotchHeight + 34
+        case .hud:
+            width = max(calculatedPeekWidth, 230)
+            height = physicalNotchHeight + 34
         case .expanded(let activeTab):
             let contentH: CGFloat
             switch activeTab {
@@ -330,7 +335,7 @@ public final class NotchContainerView: NSView {
     private func cornerRadiusForState(_ state: NotchState) -> CGFloat {
         switch state {
         case .collapsed: return 10
-        case .peek: return 19
+        case .peek, .hud: return 19
         case .expanded: return 26
         }
     }
@@ -361,7 +366,6 @@ public final class NotchContainerView: NSView {
         updateShapeForCurrentState(animated: animated)
         updateSubviewsForState(newState, animated: animated)
 
-        // Inform managers of adaptive polling state
         let isExpanded = newState.isExpanded
         ClipboardManager.shared.updatePollingState(isNotchExpanded: isExpanded)
         MediaManager.shared.updatePollingState(isNotchExpanded: isExpanded)
@@ -374,7 +378,6 @@ public final class NotchContainerView: NSView {
         let radius = cornerRadiusForState(state)
         let newPath = createNotchPath(rect: rect, cornerRadius: radius)
 
-        // Synchronize shadowPath along with path to prevent real-time software shadow recalculations
         if animated {
             let springAnim = CASpringAnimation(keyPath: "path")
             springAnim.mass = springMass
@@ -428,6 +431,14 @@ public final class NotchContainerView: NSView {
             updatePeekContent()
             setExpandedControlsEnabled(false)
 
+        case .hud(let type, let level):
+            peekContainerView.isHidden = false
+            expandedContainerView.isHidden = true
+            expandedContainerView.frame = .zero
+            peekContainerView.frame = rect
+            updateHUDContent(type: type, level: level)
+            setExpandedControlsEnabled(false)
+
         case .expanded:
             peekContainerView.isHidden = true
             expandedContainerView.isHidden = false
@@ -445,7 +456,7 @@ public final class NotchContainerView: NSView {
                 expandedContainerView.animator().alphaValue = 0.0
                 unmountExpandedContentView()
 
-            case .peek:
+            case .peek, .hud:
                 peekContainerView.animator().alphaValue = 1.0
                 expandedContainerView.animator().alphaValue = 0.0
                 unmountExpandedContentView()
@@ -463,7 +474,7 @@ public final class NotchContainerView: NSView {
         rightButtonsStack.arrangedSubviews.compactMap { $0 as? NSControl }.forEach { $0.isEnabled = enabled }
     }
 
-    // MARK: - Subview Configurations (Peek & Expanded)
+    // MARK: - Subview Configurations (Peek, HUD & Expanded)
 
     private func setupPeekView() {
         peekContainerView.wantsLayer = true
@@ -520,6 +531,26 @@ public final class NotchContainerView: NSView {
             if trackingController?.currentState == .peek {
                 updateShapeForCurrentState(animated: true)
             }
+        }
+    }
+
+    private func updateHUDContent(type: NotchHUDType, level: Double) {
+        let config = NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        let percentInt = Int(min(max(level, 0.0), 1.0) * 100.0)
+
+        switch type {
+        case .volume:
+            let iconName = level <= 0 ? "speaker.slash.fill" : "speaker.wave.2.fill"
+            peekIconView.image = NSImage(systemSymbolName: iconName, accessibilityDescription: "Volume")?.withSymbolConfiguration(config)
+            peekIconView.contentTintColor = NSColor(red: 0, green: 210/255, blue: 255/255, alpha: 1.0)
+            peekLabel.stringValue = "Volume"
+            peekSubLabel.stringValue = "\(percentInt)%"
+
+        case .brightness:
+            peekIconView.image = NSImage(systemSymbolName: "sun.max.fill", accessibilityDescription: "Brightness")?.withSymbolConfiguration(config)
+            peekIconView.contentTintColor = NSColor.systemYellow
+            peekLabel.stringValue = "Brightness"
+            peekSubLabel.stringValue = "\(percentInt)%"
         }
     }
 
@@ -644,7 +675,7 @@ public final class NotchContainerView: NSView {
         trackingController?.setNotchState(.collapsed, animated: true)
     }
 
-    // MARK: - Content Mounting / Unmounting (Hosting View Cache for 60/120Hz Smoothness)
+    // MARK: - Content Mounting / Unmounting (Hosting View Cache)
 
     private func mountExpandedContentView(for activeTab: NotchTab? = nil) {
         guard let hostView = tabContentHostView else { return }

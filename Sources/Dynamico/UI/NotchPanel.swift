@@ -39,21 +39,11 @@ public final class NotchPanel: NSPanel {
 
     // MARK: - State-Driven Mouse Pass-Through
 
-    /// Synchronises window-level `ignoresMouseEvents` with the current `NotchState`.
-    ///
-    /// - **`.collapsed`**: `ignoresMouseEvents = true` — the transparent 720×260 canvas
-    ///   must never block clicks to the menu bar, window titles, or background apps.
-    ///   Hover detection in this state is delegated to a global `NSEvent` monitor managed
-    ///   by `NotchTrackingController`, which does not require the window to intercept events.
-    ///
-    /// - **`.peek`** / **`.expanded`**: `ignoresMouseEvents = false` — the panel intercepts
-    ///   events, and view-level `hitTest(_:)` in `NotchContainerView` restricts interaction
-    ///   strictly to the visible pill or expanded-hub shape, passing all other clicks through.
     public func applyMousePassThrough(for state: NotchState) {
         switch state {
         case .collapsed:
             ignoresMouseEvents = true
-        case .peek, .expanded:
+        case .peek, .expanded, .hud:
             ignoresMouseEvents = false
         }
     }

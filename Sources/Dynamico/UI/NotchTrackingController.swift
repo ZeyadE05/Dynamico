@@ -1,14 +1,25 @@
 import AppKit
 import Combine
 
+public enum NotchHUDType: Equatable {
+    case volume
+    case brightness
+}
+
 /// Associated-Value State Machine for Notch interaction.
 public enum NotchState: Equatable {
     case collapsed
     case peek
     case expanded(activeTab: NotchTab)
+    case hud(type: NotchHUDType, level: Double)
 
     public var isExpanded: Bool {
         if case .expanded = self { return true }
+        return false
+    }
+
+    public var isHUD: Bool {
+        if case .hud = self { return true }
         return false
     }
 
@@ -19,10 +30,11 @@ public enum NotchState: Equatable {
 }
 
 /// Event-Driven Notch Controller (Zero Polling / Zero Timers).
-/// Manages the collapsed -> peek -> expanded state lifecycle with tab persistence
-/// (defaulting to Media Player on fresh boot, restoring last active tab during session).
+/// Manages the collapsed -> peek -> expanded -> hud state lifecycle with tab persistence.
 @MainActor
 public final class NotchTrackingController: NSResponder, ObservableObject {
+    public static let shared = NotchTrackingController()
+
     @Published public private(set) var currentState: NotchState = .collapsed
     @Published public private(set) var isDragActive: Bool = false
 
@@ -48,6 +60,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     }
 
     private var collapseWorkItem: DispatchWorkItem?
+    private var hudDismissWorkItem: DispatchWorkItem?
 
     public override init() {
         super.init()
@@ -57,9 +70,31 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         super.init(coder: coder)
     }
 
+    // MARK: - Native System HUD Trigger & Auto-Dismissal
+
+    public func showHUD(type: NotchHUDType, level: Double) {
+        IdleCoordinator.shared.userDidInteract()
+
+        if currentState.isExpanded { return }
+
+        hudDismissWorkItem?.cancel()
+        setNotchState(.hud(type: type, level: level), animated: true)
+
+        let workItem = DispatchWorkItem { [weak self] in
+            Task { @MainActor in
+                if self?.currentState.isHUD == true {
+                    self?.setNotchState(.collapsed, animated: true)
+                }
+            }
+        }
+        self.hudDismissWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: workItem)
+    }
+
     // MARK: - Drag-and-Drop Pinning & Immediate Snapping
 
     public func updateDragTargeted(_ targeted: Bool) {
+        IdleCoordinator.shared.userDidInteract()
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
 
@@ -91,7 +126,12 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         collapseWorkItem?.cancel()
         collapseWorkItem = nil
 
-        guard currentState != newState else { return }
+        if currentState.isHUD && newState.isHUD {
+            // Keep HUD updated smoothly
+        } else if currentState == newState {
+            return
+        }
+
         let previousState = currentState
         currentState = newState
 
@@ -117,6 +157,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     }
 
     public func selectTab(_ tab: NotchTab) {
+        IdleCoordinator.shared.userDidInteract()
         let isSameTab = (lastActiveTab == tab)
         lastActiveTab = tab
         if !isSameTab {
@@ -133,7 +174,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
             performStrongHaptic(.levelChange)
         case (_, .expanded):
             performBurstHaptic(.levelChange, count: 2)
-        case (.expanded, .collapsed), (.peek, .collapsed):
+        case (.expanded, .collapsed), (.peek, .collapsed), (.hud, .collapsed):
             performStrongHaptic(.levelChange)
         default:
             performStrongHaptic(.generic)
@@ -158,6 +199,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     }
 
     public func toggleExpanded() {
+        IdleCoordinator.shared.userDidInteract()
         if currentState.isExpanded {
             setNotchState(.collapsed, animated: true)
         } else {
@@ -171,7 +213,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         switch state {
         case .collapsed:
             installGlobalMonitor()
-        case .peek, .expanded:
+        case .peek, .expanded, .hud:
             removeGlobalMonitor()
         }
     }
@@ -181,7 +223,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved, .leftMouseDragged]) { [weak self] event in
             let mouseScreen = NSEvent.mouseLocation
             
-            // Fast Top-Screen Boundary Rejection: If cursor is not near screen top, skip immediately
+            // Fast Top-Screen Boundary Rejection
             guard let mainScreen = NSScreen.main, mouseScreen.y >= (mainScreen.frame.maxY - 50) else { return }
 
             DispatchQueue.main.async { [weak self] in
@@ -193,6 +235,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
                 let hitBoundsScreen = window.convertToScreen(hitBoundsWindow)
 
                 if hitBoundsScreen.contains(mouseScreen) {
+                    IdleCoordinator.shared.userDidInteract()
                     self.collapseWorkItem?.cancel()
                     self.collapseWorkItem = nil
                     if event.type == .leftMouseDragged || NSEvent.pressedMouseButtons != 0 {
@@ -226,6 +269,7 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     // MARK: - Mouse Event Handling
 
     override public func mouseEntered(with event: NSEvent) {
+        IdleCoordinator.shared.userDidInteract()
         guard let container = containerView else { return }
         let point = container.convert(event.locationInWindow, from: nil)
 
@@ -248,16 +292,19 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
         case .collapsed:
             let physicalNotchRect = container.physicalNotchHitBounds()
             if physicalNotchRect.contains(point) {
+                IdleCoordinator.shared.userDidInteract()
                 collapseWorkItem?.cancel()
                 collapseWorkItem = nil
                 setNotchState(.peek, animated: true)
             }
 
-        case .peek, .expanded:
+        case .peek, .expanded, .hud:
             let activeBounds = container.currentBoundsForState(currentState).insetBy(dx: -6, dy: -6)
             if activeBounds.contains(point) || isDragActive {
                 collapseWorkItem?.cancel()
                 collapseWorkItem = nil
+            } else if currentState.isHUD {
+                // Keep HUD until auto-dismiss timer handles it
             } else {
                 collapseWorkItem?.cancel()
                 collapseWorkItem = nil
@@ -275,7 +322,8 @@ public final class NotchTrackingController: NSResponder, ObservableObject {
     }
 
     override public func mouseDown(with event: NSEvent) {
-        if currentState == .peek || currentState == .collapsed {
+        IdleCoordinator.shared.userDidInteract()
+        if currentState == .peek || currentState == .collapsed || currentState.isHUD {
             setNotchState(.expanded(activeTab: lastActiveTab), animated: true)
         }
     }
